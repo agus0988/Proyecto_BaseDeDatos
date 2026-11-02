@@ -60,6 +60,7 @@ CREATE TABLE equipo_jugador_torneo (
     PRIMARY KEY (id_equipo, ci_jugador, id_torneo),
     UNIQUE (ci_jugador, id_torneo),
     UNIQUE (id_equipo, ci_jugador),
+    UNIQUE (id_equipo, numero_camiseta),
     FOREIGN KEY (id_equipo, id_torneo) REFERENCES equipo(id_equipo, id_torneo),
     FOREIGN KEY (ci_jugador) REFERENCES jugador(ci),
     CHECK (numero_camiseta BETWEEN 1 AND 99)
@@ -99,6 +100,11 @@ CREATE TABLE partido (
     nombre_cancha VARCHAR(50) NOT NULL,
     id_complejo INT NOT NULL,
     estado ENUM('programado','jugado','postergado','cancelado') NOT NULL DEFAULT 'programado',
+    slot_activo TINYINT GENERATED ALWAYS AS (
+        CASE WHEN estado = 'cancelado' THEN NULL ELSE 1 END
+    ) STORED,
+    UNIQUE (dia, id_turno, nombre_cancha, id_complejo, slot_activo),
+    CHECK (numero_fecha > 0),
     FOREIGN KEY (id_equipo_local, id_torneo) REFERENCES equipo(id_equipo, id_torneo),
     FOREIGN KEY (id_equipo_visitante, id_torneo) REFERENCES equipo(id_equipo, id_torneo),
     FOREIGN KEY (id_turno) REFERENCES turno(id_turno),
@@ -142,6 +148,7 @@ CREATE TABLE sancion_jugador (
     motivo ENUM('roja','acumulacion de amarillas','disciplinaria') NOT NULL,
     numero_fecha_inicio INT NOT NULL,
     cantidad_fechas INT NOT NULL DEFAULT 1,
+    CHECK (numero_fecha_inicio > 0),
     FOREIGN KEY (ci_jugador) REFERENCES jugador(ci),
     FOREIGN KEY (id_torneo) REFERENCES torneo(id_torneo),
     CHECK (cantidad_fechas >= 1)

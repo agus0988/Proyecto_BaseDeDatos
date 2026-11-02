@@ -188,6 +188,35 @@ def test_tarjeta_roja_genera_sancion(client, monkeypatch):
                for sql, params, _ in ejecuciones)
 
 
+def test_sanciona_otra_vez_al_llegar_a_seis_amarillas(client, monkeypatch):
+    autenticar_como("planillero")
+    ejecuciones = []
+
+    def fake_fetch_one(sql, params=(), rol="administrador"):
+        if "FROM partido p JOIN turno t" in sql:
+            return {"estado": "jugado", "vencido": 0}
+        if "SELECT id_torneo, numero_fecha FROM partido" in sql:
+            return {"id_torneo": 1, "numero_fecha": 6}
+        if "SELECT COUNT(*) AS n FROM tarjeta" in sql:
+            return {"n": 6}
+        pytest.fail(f"Consulta inesperada: {sql}")
+
+    monkeypatch.setattr(api, "fetch_one", fake_fetch_one)
+    monkeypatch.setattr(
+        api,
+        "execute",
+        lambda sql, params=(), rol="administrador": ejecuciones.append((sql, params, rol)),
+    )
+
+    respuesta = client.post(
+        "/partidos/10/tarjetas",
+        json={"ci_jugador": "1234567", "minuto": 45, "color": "amarilla"},
+    )
+
+    assert respuesta.status_code == 200
+    assert any("INSERT INTO sancion_jugador" in sql for sql, _, _ in ejecuciones)
+
+
 @pytest.mark.parametrize(
     ("ruta", "id_objeto"),
     [
@@ -230,15 +259,90 @@ def test_reporte_de_posiciones_devuelve_seis_equipos(client, monkeypatch):
     assert len(respuesta.json()) == 6
 
 
-def test_api_expone_los_18_reportes():
+def test_api_expone_los_12_reportes():
     rutas = {
         ruta.path
         for ruta in api.app.routes
         if ruta.path.startswith("/reportes/")
     }
 
-    assert len(rutas) == 18
-    assert "/reportes/goles-por-fecha" in rutas
+    assert len(rutas) == 12
+    assert "/reportes/riesgo-suspension" in rutas
+    assert "/reportes/partidos-por-equipo" not in rutas
+
+
+def test_planillero_no_puede_consultar_reportes(client):
+    autenticar_como("planillero")
+
+    respuesta = client.get("/reportes/tabla-posiciones")
+
+    assert respuesta.status_code == 403
+
+
+def test_planillero_solo_lee_partidos_equipos_y_planteles(client, monkeypatch):
+    autenticar_como("planillero")
+    monkeypatch.setattr(api, "fetch_all", lambda *args, **kwargs: [])
+
+    assert client.get("/partidos").status_code == 200
+    assert client.get("/equipos").status_code == 200
+    assert client.get("/equipos/1/jugadores").status_code == 200
+    assert client.get("/jugadores").status_code == 403
+    assert client.get("/sanciones").status_code == 403
+    assert client.get("/partidos/1/goles").status_code == 403
+
+
+def test_registrar_planilla_pasa_partido_a_jugado_si_termino(client, monkeypatch):
+    autenticar_como("planillero")
+    ejecuciones = []
+    monkeypatch.setattr(api, "validar_planilla", lambda *args: True)
+    monkeypatch.setattr(
+        api,
+        "execute",
+        lambda sql, params=(), rol="administrador": ejecuciones.append((sql, params, rol)),
+    )
+
+    respuesta = client.post(
+        "/partidos/10/planilla",
+        json={"ci_jugador": "1234567", "id_equipo": 1},
+    )
+
+    assert respuesta.status_code == 200
+    assert len(ejecuciones) == 2
+    assert ejecuciones[1][0].startswith("UPDATE partido SET estado='jugado'")
+    assert ejecuciones[1][2] == "administrador"
+
+
+def test_consultar_resultado_de_partido(client, monkeypatch):
+    autenticar_como("administrador")
+    monkeypatch.setattr(
+        api,
+        "fetch_one",
+        lambda sql, *args, **kwargs: {"id_partido": 1, "goles_local": 2, "goles_visitante": 1}
+        if "resultado_partido" in sql
+        else None,
+    )
+
+    respuesta = client.get("/partidos/1/resultado")
+
+    assert respuesta.status_code == 200
+    assert respuesta.json()["goles_local"] == 2
+
+
+def test_crear_torneo_valida_rango_de_fechas(client):
+    autenticar_como("administrador")
+
+    respuesta = client.post(
+        "/torneos",
+        json={
+            "nombre": "Torneo fuera de rango",
+            "anio": 2027,
+            "semestre": 1,
+            "fecha_inicio": "2027-10-01",
+            "fecha_fin": "2027-09-01",
+        },
+    )
+
+    assert respuesta.status_code == 422
 
 
 def test_no_se_permite_actualizar_partido_jugado_fuera_de_48_horas(client, monkeypatch):

@@ -9,7 +9,7 @@ import mysql.connector
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from backend import execute, fetch_all, fetch_one
 import consultas
@@ -40,12 +40,6 @@ def usuario_actual(cred: HTTPBasicCredentials = Depends(seguridad)):
 
 def solo_admin(rol: str = Depends(usuario_actual)):
     if rol != "administrador":
-        raise HTTPException(status_code=403, detail="Forbidden")
-    return rol
-
-
-def solo_admin_o_planillero(rol: str = Depends(usuario_actual)):
-    if rol not in {"administrador", "planillero"}:
         raise HTTPException(status_code=403, detail="Forbidden")
     return rol
 
@@ -132,6 +126,21 @@ class CapitanIn(BaseModel):
 
 class EstadoTorneoIn(BaseModel):
     estado: Literal["inscripcion", "en curso", "finalizado"]
+
+
+class TorneoIn(BaseModel):
+    nombre: str = Field(min_length=1, max_length=100)
+    anio: int = Field(ge=1900, le=32767)
+    semestre: Literal[1, 2]
+    fecha_inicio: date
+    fecha_fin: date
+    estado: Literal["inscripcion", "en curso", "finalizado"] = "inscripcion"
+
+    @model_validator(mode="after")
+    def validar_fechas(self):
+        if self.fecha_fin < self.fecha_inicio:
+            raise ValueError("fecha_fin debe ser igual o posterior a fecha_inicio")
+        return self
 
 
 # --- Validaciones de negocio ---
@@ -284,11 +293,13 @@ def validar_correccion(id_partido: int):
     )
     if not fila:
         error("Partido inexistente")
+    if fila["estado"] == "cancelado":
+        error("No se pueden registrar ni corregir eventos de un partido cancelado")
     if fila["estado"] == "jugado" and fila["vencido"]:
         error("Pasaron mas de 48 horas desde el partido")
 
 
-def validar_planilla(id_partido: int, ci: str, id_equipo: int):
+def validar_planilla(id_partido: int, ci: str, id_equipo: int) -> bool:
     partido = fetch_one(
         "SELECT p.id_torneo, p.numero_fecha, p.estado, p.id_equipo_local, "
         "p.id_equipo_visitante, TIMESTAMP(p.dia, t.hora_fin) <= NOW() AS turno_finalizado "
@@ -317,6 +328,7 @@ def validar_planilla(id_partido: int, ci: str, id_equipo: int):
     ):
         error("Jugador suspendido")
     validar_correccion(id_partido)
+    return bool(partido["turno_finalizado"])
 
 
 def aplicar_sancion(id_partido: int, ci: str, color: str):
@@ -333,7 +345,7 @@ def aplicar_sancion(id_partido: int, ci: str, color: str):
             (ci, partido["id_torneo"]),
             rol="administrador",
         )["n"]
-        if n == 3:
+        if n > 0 and n % 3 == 0:
             motivo = "acumulacion de amarillas"
     if motivo:
         execute(
@@ -352,7 +364,7 @@ def raiz():
 
 
 @app.get("/jugadores")
-def listar_jugadores(_rol: str = Depends(usuario_actual)):
+def listar_jugadores(_rol: str = Depends(solo_admin)):
     return fetch_all("SELECT * FROM jugador ORDER BY ci")
 
 
@@ -368,6 +380,19 @@ def crear_jugador(j: JugadorIn):
 
 @app.put("/jugadores/{ci}", dependencies=[Depends(solo_admin)])
 def actualizar_jugador(ci: str, j: JugadorIn):
+    jugador_inscripto = fetch_one(
+        "SELECT 1 AS ok FROM equipo_jugador_torneo WHERE ci_jugador=%s LIMIT 1",
+        (ci,),
+        rol="administrador",
+    )
+    if jugador_inscripto:
+        actual = fetch_one(
+            "SELECT id_facultad FROM jugador WHERE ci=%s",
+            (ci,),
+            rol="administrador",
+        )
+        if actual and j.id_facultad != actual["id_facultad"]:
+            error("No se puede cambiar la facultad de un jugador inscripto en un plantel")
     execute(
         "UPDATE jugador SET nombre=%s, apellido=%s, email=%s, fecha_nacimiento=%s, id_facultad=%s, tipo=%s WHERE ci=%s",
         (j.nombre, j.apellido, j.email, j.fecha_nacimiento, j.id_facultad, j.tipo, ci),
@@ -387,6 +412,16 @@ def listar_equipos(_rol: str = Depends(usuario_actual)):
     return fetch_all("SELECT * FROM equipo ORDER BY id_equipo")
 
 
+@app.get("/equipos/{id_equipo}/jugadores")
+def listar_jugadores_del_equipo(id_equipo: int, _rol: str = Depends(usuario_actual)):
+    return fetch_all(
+        "SELECT j.ci, j.nombre, j.apellido, j.tipo, ejt.numero_camiseta "
+        "FROM equipo_jugador_torneo ejt JOIN jugador j ON j.ci=ejt.ci_jugador "
+        "WHERE ejt.id_equipo=%s ORDER BY ejt.numero_camiseta",
+        (id_equipo,),
+    )
+
+
 @app.post("/equipos", dependencies=[Depends(solo_admin)])
 def crear_equipo(e: EquipoIn):
     if e.ci_capitan:
@@ -401,6 +436,21 @@ def crear_equipo(e: EquipoIn):
 
 @app.put("/equipos/{id_equipo}", dependencies=[Depends(solo_admin)])
 def actualizar_equipo(id_equipo: int, e: EquipoIn):
+    actual = fetch_one(
+        "SELECT id_facultad FROM equipo WHERE id_equipo=%s",
+        (id_equipo,),
+        rol="administrador",
+    )
+    if not actual:
+        error("Equipo inexistente")
+    if e.id_facultad != actual["id_facultad"]:
+        integrantes = fetch_one(
+            "SELECT COUNT(*) AS total FROM equipo_jugador_torneo WHERE id_equipo=%s",
+            (id_equipo,),
+            rol="administrador",
+        )
+        if integrantes["total"]:
+            error("No se puede cambiar la facultad de un equipo con jugadores en el plantel")
     if e.ci_capitan:
         validar_capitan(id_equipo, e.ci_capitan, e.id_facultad)
     execute(
@@ -444,7 +494,7 @@ def cambiar_capitan(id_equipo: int, data: CapitanIn):
 
 
 @app.get("/complejos")
-def listar_complejos(_rol: str = Depends(usuario_actual)):
+def listar_complejos(_rol: str = Depends(solo_admin)):
     return fetch_all("SELECT * FROM complejo ORDER BY id_complejo")
 
 
@@ -475,7 +525,7 @@ def eliminar_complejo(id_complejo: int):
 
 
 @app.get("/complejos/{id_complejo}/canchas")
-def listar_canchas(id_complejo: int, _rol: str = Depends(usuario_actual)):
+def listar_canchas(id_complejo: int, _rol: str = Depends(solo_admin)):
     return fetch_all("SELECT * FROM cancha WHERE id_complejo=%s ORDER BY nombre_cancha", (id_complejo,))
 
 
@@ -540,19 +590,25 @@ def eliminar_partido(id_partido: int):
     return {"mensaje": "Partido eliminado"}
 
 
-@app.post("/partidos/{id_partido}/planilla", dependencies=[Depends(solo_admin_o_planillero)])
+@app.post("/partidos/{id_partido}/planilla")
 def registrar_planilla(id_partido: int, pl: PlanillaIn, rol: str = Depends(usuario_actual)):
-    validar_planilla(id_partido, pl.ci_jugador, pl.id_equipo)
+    turno_finalizado = validar_planilla(id_partido, pl.ci_jugador, pl.id_equipo)
     execute(
         "INSERT INTO planilla_partido (id_partido, ci_jugador, id_equipo) VALUES (%s,%s,%s)",
         (id_partido, pl.ci_jugador, pl.id_equipo),
         rol=rol,
     )
+    if turno_finalizado:
+        execute(
+            "UPDATE partido SET estado='jugado' WHERE id_partido=%s AND estado NOT IN ('jugado','cancelado')",
+            (id_partido,),
+            rol="administrador",
+        )
     return {"mensaje": "Jugador agregado a la planilla"}
 
 
 @app.get("/partidos/{id_partido}/planilla")
-def listar_planilla(id_partido: int, _rol: str = Depends(usuario_actual)):
+def listar_planilla(id_partido: int, _rol: str = Depends(solo_admin)):
     return fetch_all(
         "SELECT pp.id_partido, pp.ci_jugador, pp.id_equipo, j.nombre, j.apellido "
         "FROM planilla_partido pp JOIN jugador j ON j.ci=pp.ci_jugador "
@@ -561,14 +617,14 @@ def listar_planilla(id_partido: int, _rol: str = Depends(usuario_actual)):
     )
 
 
-@app.delete("/partidos/{id_partido}/planilla/{ci_jugador}", dependencies=[Depends(solo_admin_o_planillero)])
+@app.delete("/partidos/{id_partido}/planilla/{ci_jugador}")
 def eliminar_planilla(id_partido: int, ci_jugador: str, rol: str = Depends(usuario_actual)):
     validar_correccion(id_partido)
     execute("DELETE FROM planilla_partido WHERE id_partido=%s AND ci_jugador=%s", (id_partido, ci_jugador), rol=rol)
     return {"mensaje": "Jugador quitado de la planilla"}
 
 
-@app.post("/partidos/{id_partido}/goles", dependencies=[Depends(solo_admin_o_planillero)])
+@app.post("/partidos/{id_partido}/goles")
 def registrar_gol(id_partido: int, g: GolIn, rol: str = Depends(usuario_actual)):
     validar_correccion(id_partido)
     execute(
@@ -580,21 +636,21 @@ def registrar_gol(id_partido: int, g: GolIn, rol: str = Depends(usuario_actual))
 
 
 @app.get("/partidos/{id_partido}/goles")
-def listar_goles(id_partido: int, _rol: str = Depends(usuario_actual)):
+def listar_goles(id_partido: int, _rol: str = Depends(solo_admin)):
     return fetch_all(
         "SELECT * FROM gol WHERE id_partido=%s ORDER BY minuto, id_gol",
         (id_partido,),
     )
 
 
-@app.delete("/partidos/{id_partido}/goles/{id_gol}", dependencies=[Depends(solo_admin_o_planillero)])
+@app.delete("/partidos/{id_partido}/goles/{id_gol}")
 def eliminar_gol(id_partido: int, id_gol: int, rol: str = Depends(usuario_actual)):
     validar_correccion(id_partido)
     execute("DELETE FROM gol WHERE id_gol=%s AND id_partido=%s", (id_gol, id_partido), rol=rol)
     return {"mensaje": "Gol eliminado"}
 
 
-@app.post("/partidos/{id_partido}/tarjetas", dependencies=[Depends(solo_admin_o_planillero)])
+@app.post("/partidos/{id_partido}/tarjetas")
 def registrar_tarjeta(id_partido: int, t: TarjetaIn, rol: str = Depends(usuario_actual)):
     validar_correccion(id_partido)
     execute(
@@ -607,14 +663,14 @@ def registrar_tarjeta(id_partido: int, t: TarjetaIn, rol: str = Depends(usuario_
 
 
 @app.get("/partidos/{id_partido}/tarjetas")
-def listar_tarjetas(id_partido: int, _rol: str = Depends(usuario_actual)):
+def listar_tarjetas(id_partido: int, _rol: str = Depends(solo_admin)):
     return fetch_all(
         "SELECT * FROM tarjeta WHERE id_partido=%s ORDER BY minuto, id_tarjeta",
         (id_partido,),
     )
 
 
-@app.delete("/partidos/{id_partido}/tarjetas/{id_tarjeta}", dependencies=[Depends(solo_admin_o_planillero)])
+@app.delete("/partidos/{id_partido}/tarjetas/{id_tarjeta}")
 def eliminar_tarjeta(id_partido: int, id_tarjeta: int, rol: str = Depends(usuario_actual)):
     validar_correccion(id_partido)
     execute("DELETE FROM tarjeta WHERE id_tarjeta=%s AND id_partido=%s", (id_tarjeta, id_partido), rol=rol)
@@ -622,7 +678,7 @@ def eliminar_tarjeta(id_partido: int, id_tarjeta: int, rol: str = Depends(usuari
 
 
 @app.get("/sanciones")
-def listar_sanciones(_rol: str = Depends(usuario_actual)):
+def listar_sanciones(_rol: str = Depends(solo_admin)):
     return fetch_all("SELECT * FROM sancion_jugador ORDER BY id_torneo, id_sancion")
 
 
@@ -655,8 +711,26 @@ def eliminar_sancion(id_sancion: int):
 
 
 @app.get("/torneos")
-def listar_torneos(_rol: str = Depends(usuario_actual)):
+def listar_torneos(_rol: str = Depends(solo_admin)):
     return fetch_all("SELECT * FROM torneo ORDER BY id_torneo")
+
+
+@app.post("/torneos", dependencies=[Depends(solo_admin)])
+def crear_torneo(torneo: TorneoIn):
+    execute(
+        "INSERT INTO torneo (nombre, anio, semestre, fecha_inicio, fecha_fin, estado) "
+        "VALUES (%s,%s,%s,%s,%s,%s)",
+        (
+            torneo.nombre,
+            torneo.anio,
+            torneo.semestre,
+            torneo.fecha_inicio,
+            torneo.fecha_fin,
+            torneo.estado,
+        ),
+        rol="administrador",
+    )
+    return {"mensaje": "Torneo creado"}
 
 
 @app.put("/torneos/{id_torneo}/estado", dependencies=[Depends(solo_admin)])
@@ -676,105 +750,94 @@ def actualizar_estado_torneo(id_torneo: int, datos: EstadoTorneoIn):
 
 
 @app.get("/facultades")
-def listar_facultades(_rol: str = Depends(usuario_actual)):
+def listar_facultades(_rol: str = Depends(solo_admin)):
     return fetch_all("SELECT * FROM facultad ORDER BY id_facultad")
 
 
 @app.get("/turnos")
-def listar_turnos(_rol: str = Depends(usuario_actual)):
+def listar_turnos(_rol: str = Depends(solo_admin)):
     return fetch_all("SELECT * FROM turno ORDER BY id_turno")
 
 
 # --- Reportes ---
 
+@app.get("/partidos/{id_partido}/resultado")
+def obtener_resultado_partido(id_partido: int, _rol: str = Depends(solo_admin)):
+    resultado = fetch_one(
+        "SELECT * FROM resultado_partido WHERE id_partido=%s",
+        (id_partido,),
+        rol="administrador",
+    )
+    if resultado:
+        return resultado
+    partido = fetch_one(
+        "SELECT estado FROM partido WHERE id_partido=%s",
+        (id_partido,),
+        rol="administrador",
+    )
+    if not partido:
+        raise HTTPException(status_code=404, detail="Partido inexistente")
+    raise HTTPException(status_code=409, detail="El partido todavía no tiene resultado")
+
+
 @app.get("/reportes/tabla-posiciones")
-def reporte_tabla_posiciones(torneo_id: int = 1, _rol: str = Depends(usuario_actual)):
+def reporte_tabla_posiciones(torneo_id: int = 1, _rol: str = Depends(solo_admin)):
     return consultas.tabla_posiciones(torneo_id)
 
 
-@app.get("/reportes/partidos-por-equipo")
-def reporte_partidos_por_equipo(torneo_id: int = 1, _rol: str = Depends(usuario_actual)):
-    return consultas.partidos_jugados_por_equipo(torneo_id)
-
-
-@app.get("/reportes/goles-por-fecha")
-def reporte_goles_por_fecha(torneo_id: int = 1, _rol: str = Depends(usuario_actual)):
-    return consultas.goles_por_fecha(torneo_id)
-
-
 @app.get("/reportes/goleadores")
-def reporte_goleadores(torneo_id: int = 1, _rol: str = Depends(usuario_actual)):
+def reporte_goleadores(torneo_id: int = 1, _rol: str = Depends(solo_admin)):
     return consultas.tabla_goleadores(torneo_id)
 
 
 @app.get("/reportes/fair-play")
-def reporte_fair_play(torneo_id: int = 1, _rol: str = Depends(usuario_actual)):
+def reporte_fair_play(torneo_id: int = 1, _rol: str = Depends(solo_admin)):
     return consultas.fair_play_por_equipo(torneo_id)
 
 
 @app.get("/reportes/promedio-goles")
-def reporte_promedio_goles(torneo_id: int = 1, _rol: str = Depends(usuario_actual)):
+def reporte_promedio_goles(torneo_id: int = 1, _rol: str = Depends(solo_admin)):
     return consultas.promedio_goles_por_fecha(torneo_id)
 
 
 @app.get("/reportes/porcentaje-jugados")
-def reporte_porcentaje_jugados(torneo_id: int = 1, _rol: str = Depends(usuario_actual)):
+def reporte_porcentaje_jugados(torneo_id: int = 1, _rol: str = Depends(solo_admin)):
     return consultas.porcentaje_partidos_jugados(torneo_id)
 
 
 @app.get("/reportes/canchas-turnos")
-def reporte_canchas_turnos(torneo_id: int = 1, _rol: str = Depends(usuario_actual)):
+def reporte_canchas_turnos(torneo_id: int = 1, _rol: str = Depends(solo_admin)):
     return consultas.canchas_y_turnos_mas_utilizados(torneo_id)
 
 
 @app.get("/reportes/jugadores-facultad-tipo")
-def reporte_jugadores_facultad_tipo(torneo_id: int = 1, _rol: str = Depends(usuario_actual)):
+def reporte_jugadores_facultad_tipo(torneo_id: int = 1, _rol: str = Depends(solo_admin)):
     return consultas.jugadores_por_facultad_y_tipo(torneo_id)
 
 
 @app.get("/reportes/jugadores-sin-planilla")
-def reporte_jugadores_sin_planilla(torneo_id: int = 1, _rol: str = Depends(usuario_actual)):
+def reporte_jugadores_sin_planilla(torneo_id: int = 1, _rol: str = Depends(solo_admin)):
     return consultas.jugadores_que_nunca_estuvieron_en_planilla(torneo_id)
 
 
 @app.get("/reportes/sanciones-equipo-motivo")
-def reporte_sanciones_equipo_motivo(torneo_id: int = 1, _rol: str = Depends(usuario_actual)):
+def reporte_sanciones_equipo_motivo(torneo_id: int = 1, _rol: str = Depends(solo_admin)):
     return consultas.sanciones_por_equipo_y_motivo(torneo_id)
 
 
-@app.get("/reportes/partidos-por-estado")
-def reporte_partidos_por_estado(torneo_id: int = 1, _rol: str = Depends(usuario_actual)):
-    return consultas.partidos_por_estado(torneo_id)
-
-
 @app.get("/reportes/jugadores-tarjetas")
-def reporte_jugadores_tarjetas(torneo_id: int = 1, _rol: str = Depends(usuario_actual)):
+def reporte_jugadores_tarjetas(torneo_id: int = 1, _rol: str = Depends(solo_admin)):
     return consultas.jugadores_con_mas_tarjetas(torneo_id)
 
 
-@app.get("/reportes/partidos-por-fecha")
-def reporte_partidos_por_fecha(torneo_id: int = 1, _rol: str = Depends(usuario_actual)):
-    return consultas.partidos_disputados_por_fecha(torneo_id)
-
-
-@app.get("/reportes/jugadores-por-equipo")
-def reporte_jugadores_por_equipo(torneo_id: int = 1, _rol: str = Depends(usuario_actual)):
-    return consultas.jugadores_por_equipo(torneo_id)
-
-
 @app.get("/reportes/riesgo-suspension")
-def reporte_riesgo_suspension(torneo_id: int = 1, _rol: str = Depends(usuario_actual)):
+def reporte_riesgo_suspension(torneo_id: int = 1, _rol: str = Depends(solo_admin)):
     return consultas.jugadores_en_riesgo_de_suspension(torneo_id)
 
 
 @app.get("/reportes/valla-menos-vencida")
-def reporte_valla_menos_vencida(torneo_id: int = 1, _rol: str = Depends(usuario_actual)):
+def reporte_valla_menos_vencida(torneo_id: int = 1, _rol: str = Depends(solo_admin)):
     return consultas.valla_menos_vencida(torneo_id)
-
-
-@app.get("/reportes/partidos-pendientes")
-def reporte_partidos_pendientes(torneo_id: int = 1, _rol: str = Depends(usuario_actual)):
-    return consultas.partidos_pendientes_por_equipo(torneo_id)
 
 
 if __name__ == "__main__":

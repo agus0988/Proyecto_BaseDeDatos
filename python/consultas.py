@@ -3,22 +3,6 @@
 from backend import fetch_all
 
 
-def partidos_jugados_por_equipo(torneo_id=1):
-    return fetch_all(
-        """
-        SELECT e.nombre AS equipo, COUNT(p.id_partido) AS partidos_jugados
-        FROM equipo e
-        JOIN partido p
-          ON e.id_equipo = p.id_equipo_local
-          OR e.id_equipo = p.id_equipo_visitante
-        WHERE e.id_torneo = %s AND p.estado = 'jugado'
-        GROUP BY e.id_equipo, e.nombre
-        ORDER BY partidos_jugados DESC
-        """,
-        (torneo_id,),
-    )
-
-
 def tabla_goleadores(torneo_id=1, limite=10):
     return fetch_all(
         """
@@ -62,38 +46,34 @@ def fair_play_por_equipo(torneo_id=1):
     )
 
 
-def goles_por_fecha(torneo_id=1):
-    return fetch_all(
-        """
-        SELECT p.numero_fecha, COUNT(g.id_gol) AS cantidad_goles,
-               COUNT(DISTINCT p.id_partido) AS partidos_jugados
-        FROM partido p
-        LEFT JOIN gol g ON g.id_partido = p.id_partido
-        WHERE p.id_torneo = %s AND p.estado = 'jugado'
-        GROUP BY p.numero_fecha
-        ORDER BY p.numero_fecha
-        """,
-        (torneo_id,),
-    )
-
-
 def canchas_y_turnos_mas_utilizados(torneo_id=1):
-    return fetch_all(
+    canchas = fetch_all(
         """
         SELECT c.nombre_cancha, co.nombre AS complejo,
-               t.hora_inicio, t.hora_fin,
                COUNT(p.id_partido) AS cantidad_partidos
         FROM partido p
         JOIN cancha c
           ON c.nombre_cancha = p.nombre_cancha AND c.id_complejo = p.id_complejo
         JOIN complejo co ON co.id_complejo = c.id_complejo
-        JOIN turno t ON t.id_turno = p.id_turno
         WHERE p.id_torneo = %s AND p.estado = 'jugado'
-        GROUP BY c.nombre_cancha, co.nombre, t.hora_inicio, t.hora_fin
-        ORDER BY cantidad_partidos DESC
+        GROUP BY c.id_complejo, c.nombre_cancha, co.nombre
+        ORDER BY cantidad_partidos DESC, co.nombre, c.nombre_cancha
         """,
         (torneo_id,),
     )
+    turnos = fetch_all(
+        """
+        SELECT t.id_turno, t.hora_inicio, t.hora_fin,
+               COUNT(p.id_partido) AS cantidad_partidos
+        FROM partido p
+        JOIN turno t ON t.id_turno = p.id_turno
+        WHERE p.id_torneo = %s AND p.estado = 'jugado'
+        GROUP BY t.id_turno, t.hora_inicio, t.hora_fin
+        ORDER BY cantidad_partidos DESC, t.hora_inicio
+        """,
+        (torneo_id,),
+    )
+    return {"canchas": canchas, "turnos": turnos}
 
 
 def jugadores_por_facultad_y_tipo(torneo_id=1):
@@ -144,19 +124,6 @@ def sanciones_por_equipo_y_motivo(torneo_id=1):
     )
 
 
-def partidos_por_estado(torneo_id=1):
-    return fetch_all(
-        """
-        SELECT p.estado, COUNT(p.id_partido) AS cantidad_partidos
-        FROM partido p
-        WHERE p.id_torneo = %s
-        GROUP BY p.estado
-        ORDER BY cantidad_partidos DESC
-        """,
-        (torneo_id,),
-    )
-
-
 def jugadores_con_mas_tarjetas(torneo_id=1):
     return fetch_all(
         """
@@ -168,34 +135,6 @@ def jugadores_con_mas_tarjetas(torneo_id=1):
         WHERE p.id_torneo = %s AND p.estado = 'jugado'
         GROUP BY j.ci, j.nombre, j.apellido
         ORDER BY cantidad_tarjetas DESC
-        """,
-        (torneo_id,),
-    )
-
-
-def partidos_disputados_por_fecha(torneo_id=1):
-    return fetch_all(
-        """
-        SELECT p.numero_fecha, COUNT(p.id_partido) AS cantidad_partidos
-        FROM partido p
-        WHERE p.id_torneo = %s AND p.estado = 'jugado'
-        GROUP BY p.numero_fecha
-        ORDER BY p.numero_fecha
-        """,
-        (torneo_id,),
-    )
-
-
-def jugadores_por_equipo(torneo_id=1):
-    return fetch_all(
-        """
-        SELECT e.nombre AS equipo,
-               COUNT(ejt.ci_jugador) AS cantidad_jugadores
-        FROM equipo e
-        JOIN equipo_jugador_torneo ejt ON ejt.id_equipo = e.id_equipo
-        WHERE e.id_torneo = %s
-        GROUP BY e.id_equipo, e.nombre
-        ORDER BY cantidad_jugadores DESC
         """,
         (torneo_id,),
     )
@@ -296,50 +235,22 @@ def valla_menos_vencida(torneo_id=1):
     )
 
 
-def partidos_pendientes_por_equipo(torneo_id=1):
-    return fetch_all(
-        """
-        SELECT equipo, COUNT(*) AS partidos_pendientes
-        FROM (
-            SELECT e.nombre AS equipo, p.id_partido
-            FROM partido p
-            JOIN equipo e ON e.id_equipo = p.id_equipo_local
-            WHERE p.id_torneo = %s AND p.estado IN ('programado','postergado')
-            UNION ALL
-            SELECT e.nombre AS equipo, p.id_partido
-            FROM partido p
-            JOIN equipo e ON e.id_equipo = p.id_equipo_visitante
-            WHERE p.id_torneo = %s AND p.estado IN ('programado','postergado')
-        ) sub
-        GROUP BY equipo
-        ORDER BY partidos_pendientes DESC, equipo ASC
-        """,
-        (torneo_id, torneo_id),
-    )
-
-
 def todas_las_consultas(torneo_id=1):
     """Ejecuta y devuelve todas las consultas agrupadas por nombre."""
     return {
-        "partidos_jugados_por_equipo": partidos_jugados_por_equipo(torneo_id),
         "tabla_goleadores": tabla_goleadores(torneo_id),
         "fair_play_por_equipo": fair_play_por_equipo(torneo_id),
-        "goles_por_fecha": goles_por_fecha(torneo_id),
         "canchas_y_turnos_mas_utilizados": canchas_y_turnos_mas_utilizados(torneo_id),
         "jugadores_por_facultad_y_tipo": jugadores_por_facultad_y_tipo(torneo_id),
         "jugadores_que_nunca_estuvieron_en_planilla":
             jugadores_que_nunca_estuvieron_en_planilla(torneo_id),
         "sanciones_por_equipo_y_motivo": sanciones_por_equipo_y_motivo(torneo_id),
-        "partidos_por_estado": partidos_por_estado(torneo_id),
         "jugadores_con_mas_tarjetas": jugadores_con_mas_tarjetas(torneo_id),
-        "partidos_disputados_por_fecha": partidos_disputados_por_fecha(torneo_id),
-        "jugadores_por_equipo": jugadores_por_equipo(torneo_id),
         "tabla_posiciones": tabla_posiciones(torneo_id),
         "promedio_goles_por_fecha": promedio_goles_por_fecha(torneo_id),
         "porcentaje_partidos_jugados": porcentaje_partidos_jugados(torneo_id),
         "jugadores_en_riesgo_de_suspension": jugadores_en_riesgo_de_suspension(torneo_id),
         "valla_menos_vencida": valla_menos_vencida(torneo_id),
-        "partidos_pendientes_por_equipo": partidos_pendientes_por_equipo(torneo_id),
     }
 
 

@@ -13,7 +13,7 @@ partidos, planillas, goles, tarjetas, sanciones y reportes.
 Desde la raíz del proyecto:
 
 ```bash
-docker compose up
+docker compose up --build
 ```
 
 La API queda disponible en <http://localhost:8000> y su documentación interactiva
@@ -23,7 +23,7 @@ Para recrear la base desde cero y volver a cargar los scripts SQL:
 
 ```bash
 docker compose down -v
-docker compose up
+docker compose up --build
 ```
 
 **Atención:** `down -v` elimina los datos persistidos de la base.
@@ -34,7 +34,7 @@ MySQL escucha en el puerto `3306` dentro de Docker y Compose lo publica como
 servicio `db` en el puerto interno `3306`; desde herramientas locales se usa
 `localhost:3307`.
 
-Los scripts `db/01_base.sql`, `db/02_datos.sql` y `db/03_reglas.sql` se ejecutan
+Los scripts `db/01_base.sql`, `db/02_datos.sql` y `db/03_vista_y_login.sql` se ejecutan
 en ese orden al inicializar un volumen nuevo. Si Docker ya estaba iniciado,
 Compose conserva los datos y MySQL no vuelve a ejecutar los scripts.
 
@@ -50,7 +50,7 @@ En `/docs`, usar el botón **Authorize** para autenticarse con HTTP Basic.
 Instalar las dependencias desde la raíz:
 
 ```bash
-python -m pip install -r requirements.txt
+python -m pip install -r requirements-dev.txt
 ```
 
 Ejecutar la suite:
@@ -66,7 +66,9 @@ activos.
 ## Estructura
 
 - `db/`: esquema, datos iniciales y vistas/permisos.
-- `consultas/consultas.sql`: las 18 consultas SQL de reportes.
+- `consultas/consultas.sql`: las 12 consultas SQL solicitadas.
+- `requirements-dev.txt`: dependencias de desarrollo y tests.
+- `Dockerfile`: imagen de la API con dependencias instaladas al construirla.
 - `python/api.py`: endpoints de FastAPI.
 - `python/backend.py`: conexión y operaciones con MySQL por rol.
 - `python/consultas.py`: consultas de reportes utilizadas por la API.

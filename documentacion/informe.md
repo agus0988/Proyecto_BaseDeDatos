@@ -25,11 +25,19 @@ programación de partidos, sus planillas y eventos, las sanciones y los reportes
   planillero. El backend usa credenciales MySQL distintas para cada rol.
 - Los reportes operan sobre el torneo solicitado, y la tabla de posiciones parte
   de los equipos para conservar los que aún no jugaron.
+- Los reportes solo están disponibles para administradores. El planillero puede
+  consultar partidos, equipos y planteles, y registrar planillas, goles y
+  tarjetas.
 
 ## Mejoras incorporadas al modelo y a las reglas
 
 - Restricciones de integridad para fechas, camisetas, goles, tarjetas y
   pertenencia a torneo/equipo.
+- La base impide camisetas repetidas por equipo, fechas de partido y sanción no
+  positivas, y la reserva duplicada de una cancha en el mismo día y turno. Un
+  índice único condicional permite reutilizar el turno de un partido cancelado.
+- La API valida los mismos conflictos de agenda excluyendo partidos cancelados,
+  controla planteles, capitanes, sanciones, estados y la ventana de corrección.
 - Validaciones de negocio para evitar planteles con más de diez integrantes,
   superar el límite de docentes/funcionarios, mezclar facultades y programar un
   equipo en dos partidos de la misma fecha.
@@ -41,8 +49,8 @@ programación de partidos, sus planillas y eventos, las sanciones y los reportes
 - Reporte de fair play con un punto por amarilla y tres por roja, incluyendo
   equipos sin tarjetas.
 - Incorporación de equipos sin partidos a la tabla de posiciones, porcentajes
-  sin división por cero y reportes adicionales de riesgo de suspensión, valla
-  menos vencida y partidos pendientes.
+  sin división por cero y tres reportes adicionales: riesgo de suspensión,
+  valla menos vencida y jugadores con más tarjetas.
 - Los modelos Pydantic validan las entradas de la API, incluidos complejos y
   canchas.
 
@@ -51,7 +59,7 @@ programación de partidos, sus planillas y eventos, las sanciones y los reportes
 1. Se definió el esquema relacional, sus relaciones y restricciones.
 2. Se prepararon datos iniciales, usuarios de base de datos y permisos por rol.
 3. Se creó la vista de resultados y se añadieron consultas para los reportes.
-4. Se implementó el backend Python y la API con validaciones de entrada,
+4. Se implementó el backend Python, la API y su imagen Docker con validaciones de entrada,
    autenticación y reglas de negocio.
 5. Se añadieron tests para el backend, los reportes y los flujos principales de
    la API.
