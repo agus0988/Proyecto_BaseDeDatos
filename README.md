@@ -57,12 +57,14 @@ y MySQL no vuelve a ejecutar los scripts.
 
    Esperar a que `db` figure como `healthy` y `api` como `Up`.
 
-2. Abrir otra terminal en la carpeta `python` y ejecutar el menú:
+2. Abrir otra terminal en la raíz del proyecto y ejecutar el menú:
 
-   ```bash
-   cd python
-   python menu.py
+   ```powershell
+   python .\python\menu.py
    ```
+
+   Si ya estás en la carpeta `python`, ejecutá solo `python menu.py`; no
+   vuelvas a hacer `cd python`.
 
 3. Dejar la URL predeterminada (`http://localhost:8000`) y escribir el correo y
    la contraseña de prueba cuando los solicite:
@@ -75,7 +77,9 @@ y MySQL no vuelve a ejecutar los scripts.
    puede dar de alta, modificar, listar y eliminar jugadores, equipos,
    complejos, canchas, partidos y sanciones; gestionar planteles y torneos; y
    consultar resultados y los 12 reportes. El menú valida formatos básicos y
-   la API y MySQL vuelven a validar las reglas de negocio.
+   la API y MySQL vuelven a validar las reglas de negocio. Los listados se
+   muestran en tablas; antes de cada dato, el menú indica el formato admitido,
+   como `AAAA-MM-DD` para las fechas, o el rango y las opciones disponibles.
 
    La contraseña no se muestra mientras se escribe. Para salir, seleccionar
    `0`; para detener Docker, ejecutar `docker compose down` en la primera

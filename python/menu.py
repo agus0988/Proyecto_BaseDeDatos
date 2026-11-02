@@ -81,12 +81,61 @@ class APIClient:
 
 
 def mostrar(datos, salida=print):
+    if isinstance(datos, list):
+        if not datos:
+            salida("Sin resultados.")
+            return
+        if all(isinstance(fila, dict) for fila in datos):
+            columnas = list(dict.fromkeys(clave for fila in datos for clave in fila))
+            filas = [[fila.get(columna) for columna in columnas] for fila in datos]
+            _mostrar_tabla(columnas, filas, salida)
+            return
+    elif isinstance(datos, dict):
+        _mostrar_tabla(("Campo", "Valor"), list(datos.items()), salida)
+        return
     salida(json.dumps(datos, ensure_ascii=False, indent=2))
 
 
+def _mostrar_tabla(columnas, filas, salida):
+    encabezados = [str(columna).replace("_", " ").title() for columna in columnas]
+    celdas = [[_formatear_valor(valor) for valor in fila] for fila in filas]
+    anchos = [
+        max(len(encabezado), *(len(fila[indice]) for fila in celdas))
+        for indice, encabezado in enumerate(encabezados)
+    ]
+
+    def linea(fila):
+        return " | ".join(valor.ljust(anchos[indice]) for indice, valor in enumerate(fila))
+
+    salida(linea(encabezados))
+    salida("+".join("-" * ancho for ancho in anchos))
+    for fila in celdas:
+        salida(linea(fila))
+
+
+def _formatear_valor(valor):
+    if valor is None:
+        return "-"
+    if isinstance(valor, (dict, list)):
+        texto = json.dumps(valor, ensure_ascii=False, separators=(",", ": "))
+    else:
+        texto = str(valor)
+    return texto.replace("\r", " ").replace("\n", " ")
+
+
+def _formato_numero(minimo, maximo):
+    if maximo is not None:
+        return f"número entero entre {minimo} y {maximo}"
+    if minimo == 1:
+        return "número entero positivo"
+    return f"número entero mayor o igual a {minimo}"
+
+
 def pedir_entero(mensaje, entrada=input, minimo=1, maximo=None):
+    etiqueta = mensaje.rstrip().removesuffix(":")
+    prompt = f"{etiqueta} ({_formato_numero(minimo, maximo)}): "
     while True:
-        valor = entrada(mensaje).strip()
+        valor = entrada(prompt).strip()
         try:
             numero = int(valor)
             if numero >= minimo and (maximo is None or numero <= maximo):
@@ -98,8 +147,23 @@ def pedir_entero(mensaje, entrada=input, minimo=1, maximo=None):
 
 
 def pedir_campo(nombre, tipo, entrada=input, opciones=(), minimo=1, maximo=None, opcional=False):
+    formatos = {
+        "texto": f"texto obligatorio, máximo {maximo} caracteres"
+        if maximo is not None
+        else "texto obligatorio",
+        "ci": "solo números, entre 6 y 8 dígitos",
+        "email": "correo válido (ej.: nombre@dominio.com)",
+        "fecha": "formato AAAA-MM-DD (ej.: 2026-11-24)",
+        "numero": _formato_numero(minimo, maximo),
+        "opcion": f"opciones: {', '.join(opciones)}",
+        "booleano": "respondé s o n",
+    }
+    formato = formatos.get(tipo)
+    if opcional:
+        formato = f"{formato}; opcional"
+    prompt = f"{nombre} ({formato}): " if formato else f"{nombre}: "
     while True:
-        valor = entrada(f"{nombre}: ").strip()
+        valor = entrada(prompt).strip()
         if opcional and not valor:
             return None
         if tipo == "texto":
@@ -273,7 +337,7 @@ def administrar_planteles(cliente, entrada=input, salida=print):
                 mostrar(cliente.get(f"/equipos/{equipo_id}/jugadores"), salida)
             elif opcion == "2":
                 jugador = pedir_campo("CI del jugador", "ci", entrada)
-                camiseta = pedir_entero("Número de camiseta (1-99): ", entrada, 1, 99)
+                camiseta = pedir_entero("Número de camiseta", entrada, 1, 99)
                 mostrar(
                     cliente.post(
                         f"/equipos/{equipo_id}/jugadores",
@@ -400,12 +464,12 @@ def registrar_eventos(cliente, entrada=input, salida=print):
                 ruta = f"/partidos/{partido_id}/planilla"
                 payload = {"ci_jugador": ci, "id_equipo": equipo_id}
             elif opcion == "2":
-                minuto = pedir_entero("Minuto (0-120): ", entrada, 0, 120)
+                minuto = pedir_entero("Minuto", entrada, 0, 120)
                 autogol = pedir_campo("¿Fue autogol? (s/n)", "booleano", entrada)
                 ruta = f"/partidos/{partido_id}/goles"
                 payload = {"ci_jugador": ci, "minuto": minuto, "autogol": autogol}
             elif opcion == "3":
-                minuto = pedir_entero("Minuto (0-120): ", entrada, 0, 120)
+                minuto = pedir_entero("Minuto", entrada, 0, 120)
                 color = pedir_campo(
                     "Tarjeta", "opcion", entrada, opciones=("amarilla", "roja")
                 )
