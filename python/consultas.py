@@ -17,7 +17,7 @@ def partidos_jugados_por_equipo(torneo_id=1):
         """,
         (torneo_id,),
     )
-# El %s protege contra inyecciones sql, porque sustituye el valor del segundo parametro
+
 
 def tabla_goleadores(torneo_id=1, limite=10):
     return fetch_all(
@@ -38,16 +38,25 @@ def tabla_goleadores(torneo_id=1, limite=10):
 def fair_play_por_equipo(torneo_id=1):
     return fetch_all(
         """
-        SELECT e.nombre AS equipo, t.color,
-               COUNT(t.id_tarjeta) AS cantidad_tarjetas
-        FROM tarjeta t
-        JOIN partido p ON p.id_partido = t.id_partido
-        JOIN planilla_partido pp
-          ON pp.id_partido = t.id_partido AND pp.ci_jugador = t.ci_jugador
-        JOIN equipo e ON e.id_equipo = pp.id_equipo
-        WHERE p.id_torneo = %s AND p.estado = 'jugado'
-        GROUP BY e.nombre, t.color
-        ORDER BY e.nombre
+        SELECT e.nombre AS equipo,
+               COALESCE(SUM(t.color = 'amarilla'), 0) AS tarjetas_amarillas,
+               COALESCE(SUM(t.color = 'roja'), 0) AS tarjetas_rojas,
+               COALESCE(SUM(CASE t.color
+                   WHEN 'amarilla' THEN 1
+                   WHEN 'roja' THEN 3
+                   ELSE 0
+               END), 0) AS puntos_fair_play
+        FROM equipo e
+        LEFT JOIN partido p
+          ON p.id_torneo = e.id_torneo
+         AND (p.id_equipo_local = e.id_equipo OR p.id_equipo_visitante = e.id_equipo)
+        LEFT JOIN planilla_partido pp
+          ON pp.id_partido = p.id_partido AND pp.id_equipo = e.id_equipo
+        LEFT JOIN tarjeta t
+          ON t.id_partido = pp.id_partido AND t.ci_jugador = pp.ci_jugador
+        WHERE e.id_torneo = %s
+        GROUP BY e.id_equipo, e.nombre
+        ORDER BY puntos_fair_play, e.nombre
         """,
         (torneo_id,),
     )
@@ -192,6 +201,123 @@ def jugadores_por_equipo(torneo_id=1):
     )
 
 
+def tabla_posiciones(torneo_id=1):
+    return fetch_all(
+        """
+        SELECT e.nombre AS equipo,
+               COUNT(r.id_partido) AS pj,
+               COALESCE(SUM(r.gf > r.gc), 0) AS pg,
+               COALESCE(SUM(r.gf = r.gc), 0) AS pe,
+               COALESCE(SUM(r.gf < r.gc), 0) AS pp,
+               COALESCE(SUM(r.gf), 0) AS gf,
+               COALESCE(SUM(r.gc), 0) AS gc,
+               COALESCE(SUM(r.gf - r.gc), 0) AS dg,
+               COALESCE(SUM(CASE
+                   WHEN r.gf > r.gc THEN 3
+                   WHEN r.gf = r.gc THEN 1
+                   ELSE 0
+               END), 0) AS puntos
+        FROM equipo e
+        LEFT JOIN (
+            SELECT id_partido, id_torneo, id_equipo_local AS id_equipo,
+                   goles_local AS gf, goles_visitante AS gc
+            FROM resultado_partido
+            UNION ALL
+            SELECT id_partido, id_torneo, id_equipo_visitante,
+                   goles_visitante, goles_local
+            FROM resultado_partido
+        ) r ON r.id_torneo = e.id_torneo AND r.id_equipo = e.id_equipo
+        WHERE e.id_torneo = %s
+        GROUP BY e.id_equipo, e.nombre
+        ORDER BY puntos DESC, dg DESC, gf DESC
+        """,
+        (torneo_id,),
+    )
+
+
+def promedio_goles_por_fecha(torneo_id=1):
+    return fetch_all(
+        """
+        SELECT numero_fecha, ROUND(AVG(goles_local + goles_visitante), 2) AS promedio_goles
+        FROM resultado_partido WHERE id_torneo = %s
+        GROUP BY numero_fecha WITH ROLLUP
+        """,
+        (torneo_id,),
+    )
+
+
+def porcentaje_partidos_jugados(torneo_id=1):
+    return fetch_all(
+        """
+        SELECT COALESCE(ROUND(100 * SUM(estado = 'jugado') / NULLIF(COUNT(*), 0), 1), 0) AS pct_jugados,
+               COALESCE(ROUND(100 * SUM(estado IN ('postergado','cancelado')) / NULLIF(COUNT(*), 0), 1), 0) AS pct_postergados_cancelados
+        FROM partido WHERE id_torneo = %s
+        """,
+        (torneo_id,),
+    )
+
+
+def jugadores_en_riesgo_de_suspension(torneo_id=1):
+    return fetch_all(
+        """
+        SELECT t.ci_jugador, j.nombre, j.apellido, COUNT(*) AS amarillas,
+               MAX(p.numero_fecha) AS ultima_fecha
+        FROM tarjeta t
+        JOIN partido p ON p.id_partido = t.id_partido
+        JOIN jugador j ON j.ci = t.ci_jugador
+        WHERE p.id_torneo = %s AND t.color = 'amarilla'
+        GROUP BY t.ci_jugador, j.nombre, j.apellido
+        HAVING COUNT(*) = 2
+        ORDER BY amarillas DESC
+        """,
+        (torneo_id,),
+    )
+
+
+def valla_menos_vencida(torneo_id=1):
+    return fetch_all(
+        """
+        SELECT equipo, SUM(goles_recibidos) AS goles_en_contra
+        FROM (
+            SELECT e.nombre AS equipo, r.goles_visitante AS goles_recibidos
+            FROM resultado_partido r
+            JOIN equipo e ON e.id_equipo = r.id_equipo_local
+            WHERE r.id_torneo = %s
+            UNION ALL
+            SELECT e.nombre AS equipo, r.goles_local AS goles_recibidos
+            FROM resultado_partido r
+            JOIN equipo e ON e.id_equipo = r.id_equipo_visitante
+            WHERE r.id_torneo = %s
+        ) sub
+        GROUP BY equipo
+        ORDER BY goles_en_contra ASC, equipo ASC
+        """,
+        (torneo_id, torneo_id),
+    )
+
+
+def partidos_pendientes_por_equipo(torneo_id=1):
+    return fetch_all(
+        """
+        SELECT equipo, COUNT(*) AS partidos_pendientes
+        FROM (
+            SELECT e.nombre AS equipo, p.id_partido
+            FROM partido p
+            JOIN equipo e ON e.id_equipo = p.id_equipo_local
+            WHERE p.id_torneo = %s AND p.estado IN ('programado','postergado')
+            UNION ALL
+            SELECT e.nombre AS equipo, p.id_partido
+            FROM partido p
+            JOIN equipo e ON e.id_equipo = p.id_equipo_visitante
+            WHERE p.id_torneo = %s AND p.estado IN ('programado','postergado')
+        ) sub
+        GROUP BY equipo
+        ORDER BY partidos_pendientes DESC, equipo ASC
+        """,
+        (torneo_id, torneo_id),
+    )
+
+
 def todas_las_consultas(torneo_id=1):
     """Ejecuta y devuelve todas las consultas agrupadas por nombre."""
     return {
@@ -208,6 +334,12 @@ def todas_las_consultas(torneo_id=1):
         "jugadores_con_mas_tarjetas": jugadores_con_mas_tarjetas(torneo_id),
         "partidos_disputados_por_fecha": partidos_disputados_por_fecha(torneo_id),
         "jugadores_por_equipo": jugadores_por_equipo(torneo_id),
+        "tabla_posiciones": tabla_posiciones(torneo_id),
+        "promedio_goles_por_fecha": promedio_goles_por_fecha(torneo_id),
+        "porcentaje_partidos_jugados": porcentaje_partidos_jugados(torneo_id),
+        "jugadores_en_riesgo_de_suspension": jugadores_en_riesgo_de_suspension(torneo_id),
+        "valla_menos_vencida": valla_menos_vencida(torneo_id),
+        "partidos_pendientes_por_equipo": partidos_pendientes_por_equipo(torneo_id),
     }
 
 

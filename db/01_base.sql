@@ -21,6 +21,8 @@ CREATE TABLE jugador (
     fecha_nacimiento DATE NOT NULL,
     id_facultad INT NOT NULL,
     tipo ENUM('grado','posgrado','docente','funcionario') NOT NULL,
+    CHECK (ci REGEXP '^[0-9]{6,8}$'),
+    CHECK (email LIKE '%_@_%._%'),
     FOREIGN KEY (id_facultad) REFERENCES facultad(id_facultad)
 );
 
@@ -110,8 +112,7 @@ CREATE TABLE planilla_partido (
     id_equipo INT NOT NULL,
     PRIMARY KEY (id_partido, ci_jugador),
     FOREIGN KEY (id_partido) REFERENCES partido(id_partido),
-    FOREIGN KEY (id_equipo, ci_jugador)
-        REFERENCES equipo_jugador_torneo(id_equipo, ci_jugador)
+    FOREIGN KEY (id_equipo, ci_jugador) REFERENCES equipo_jugador_torneo(id_equipo, ci_jugador)
 );
 
 CREATE TABLE gol (
@@ -120,8 +121,8 @@ CREATE TABLE gol (
     ci_jugador VARCHAR(15) NOT NULL,
     minuto TINYINT NOT NULL,
     autogol BOOLEAN NOT NULL DEFAULT FALSE,
-    FOREIGN KEY (id_partido, ci_jugador)
-        REFERENCES planilla_partido(id_partido, ci_jugador)
+    CHECK (minuto BETWEEN 0 AND 120),
+    FOREIGN KEY (id_partido, ci_jugador) REFERENCES planilla_partido(id_partido, ci_jugador)
 );
 
 CREATE TABLE tarjeta (
@@ -130,8 +131,8 @@ CREATE TABLE tarjeta (
     ci_jugador VARCHAR(15) NOT NULL,
     minuto TINYINT NOT NULL,
     color ENUM('amarilla','roja') NOT NULL,
-    FOREIGN KEY (id_partido, ci_jugador)
-        REFERENCES planilla_partido(id_partido, ci_jugador)
+    CHECK (minuto BETWEEN 0 AND 120),
+    FOREIGN KEY (id_partido, ci_jugador) REFERENCES planilla_partido(id_partido, ci_jugador)
 );
 
 CREATE TABLE sancion_jugador (
@@ -150,7 +151,6 @@ CREATE USER IF NOT EXISTS 'admin_torneo'@'%' IDENTIFIED BY 'admin1234';
 CREATE USER IF NOT EXISTS 'planillero_torneo'@'%' IDENTIFIED BY 'planillero1234';
 
 GRANT ALL PRIVILEGES ON torneo_futbol5.* TO 'admin_torneo'@'%';
-
 REVOKE ALL PRIVILEGES, GRANT OPTION FROM 'planillero_torneo'@'%';
 
 GRANT SELECT ON torneo_futbol5.facultad TO 'planillero_torneo'@'%';
@@ -163,7 +163,6 @@ GRANT SELECT ON torneo_futbol5.cancha TO 'planillero_torneo'@'%';
 GRANT SELECT ON torneo_futbol5.turno TO 'planillero_torneo'@'%';
 GRANT SELECT ON torneo_futbol5.partido TO 'planillero_torneo'@'%';
 GRANT SELECT ON torneo_futbol5.sancion_jugador TO 'planillero_torneo'@'%';
-
-GRANT SELECT, INSERT, UPDATE, DELETE ON torneo_futbol5.planilla_partido TO 'planillero_torneo'@'%';
-GRANT SELECT, INSERT, UPDATE, DELETE ON torneo_futbol5.gol TO 'planillero_torneo'@'%';
-GRANT SELECT, INSERT, UPDATE, DELETE ON torneo_futbol5.tarjeta TO 'planillero_torneo'@'%';
+GRANT SELECT, INSERT, DELETE ON torneo_futbol5.planilla_partido TO 'planillero_torneo'@'%';
+GRANT SELECT, INSERT, DELETE ON torneo_futbol5.gol TO 'planillero_torneo'@'%';
+GRANT SELECT, INSERT, DELETE ON torneo_futbol5.tarjeta TO 'planillero_torneo'@'%';

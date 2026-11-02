@@ -41,7 +41,7 @@ class FakeConnection:
 def test_execute_confirma_y_cierra_la_conexion(monkeypatch):
     cursor = FakeCursor()
     connection = FakeConnection(cursor)
-    monkeypatch.setattr(backend, "connect_db", lambda: connection)
+    monkeypatch.setattr(backend, "connect_db", lambda rol="administrador": connection)
 
     result = backend.execute("INSERT INTO jugador (ci) VALUES (%s)", ("1",))
 
@@ -55,7 +55,7 @@ def test_execute_confirma_y_cierra_la_conexion(monkeypatch):
 def test_execute_hace_rollback_y_propaga_el_error(monkeypatch):
     cursor = FakeCursor(RuntimeError("error de prueba"))
     connection = FakeConnection(cursor)
-    monkeypatch.setattr(backend, "connect_db", lambda: connection)
+    monkeypatch.setattr(backend, "connect_db", lambda rol="administrador": connection)
 
     with pytest.raises(RuntimeError, match="error de prueba"):
         backend.execute("UPDATE jugador SET nombre=%s", ("Ana",))

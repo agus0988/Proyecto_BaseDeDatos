@@ -9,14 +9,20 @@ from consultas import (
     fair_play_por_equipo,
     goles_por_fecha,
     jugadores_con_mas_tarjetas,
+    jugadores_en_riesgo_de_suspension,
     jugadores_por_equipo,
     jugadores_por_facultad_y_tipo,
     jugadores_que_nunca_estuvieron_en_planilla,
     partidos_disputados_por_fecha,
     partidos_jugados_por_equipo,
+    partidos_pendientes_por_equipo,
     partidos_por_estado,
+    porcentaje_partidos_jugados,
+    promedio_goles_por_fecha,
     sanciones_por_equipo_y_motivo,
     tabla_goleadores,
+    tabla_posiciones,
+    valla_menos_vencida,
 )
 
 
@@ -36,6 +42,12 @@ OPCIONES = {
     "10": ("Jugadores con más tarjetas", jugadores_con_mas_tarjetas),
     "11": ("Partidos disputados por fecha", partidos_disputados_por_fecha),
     "12": ("Cantidad de jugadores por equipo", jugadores_por_equipo),
+    "13": ("Tabla de posiciones", tabla_posiciones),
+    "14": ("Promedio de goles por fecha", promedio_goles_por_fecha),
+    "15": ("Porcentaje de partidos jugados", porcentaje_partidos_jugados),
+    "16": ("Jugadores en riesgo de suspensión", jugadores_en_riesgo_de_suspension),
+    "17": ("Valla menos vencida", valla_menos_vencida),
+    "18": ("Partidos pendientes por equipo", partidos_pendientes_por_equipo),
 }
 
 

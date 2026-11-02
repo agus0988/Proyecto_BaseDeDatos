@@ -37,18 +37,26 @@ LIMIT 10;
 
 SELECT
     e.nombre AS equipo,
-    t.color,
-    COUNT(t.id_tarjeta) AS cantidad_tarjetas
-FROM tarjeta t
-JOIN partido p ON p.id_partido = t.id_partido
-JOIN planilla_partido pp
-    ON pp.id_partido = t.id_partido
-    AND pp.ci_jugador = t.ci_jugador
-JOIN equipo e ON e.id_equipo = pp.id_equipo
-WHERE p.id_torneo = 1
-AND p.estado = 'jugado'
-GROUP BY e.nombre, t.color
-ORDER BY e.nombre;
+    COALESCE(SUM(t.color = 'amarilla'), 0) AS tarjetas_amarillas,
+    COALESCE(SUM(t.color = 'roja'), 0) AS tarjetas_rojas,
+    COALESCE(SUM(CASE t.color
+        WHEN 'amarilla' THEN 1
+        WHEN 'roja' THEN 3
+        ELSE 0
+    END), 0) AS puntos_fair_play
+FROM equipo e
+LEFT JOIN partido p
+    ON p.id_torneo = e.id_torneo
+    AND (p.id_equipo_local = e.id_equipo OR p.id_equipo_visitante = e.id_equipo)
+LEFT JOIN planilla_partido pp
+    ON pp.id_partido = p.id_partido
+    AND pp.id_equipo = e.id_equipo
+LEFT JOIN tarjeta t
+    ON t.id_partido = pp.id_partido
+    AND t.ci_jugador = pp.ci_jugador
+WHERE e.id_torneo = 1
+GROUP BY e.id_equipo, e.nombre
+ORDER BY puntos_fair_play, e.nombre;
 
 
 -- 4. Goles por fecha
@@ -182,3 +190,102 @@ JOIN equipo_jugador_torneo ejt
 WHERE e.id_torneo = 1
 GROUP BY e.id_equipo, e.nombre
 ORDER BY cantidad_jugadores DESC;
+
+
+-- 13. Tabla de posiciones (incluye equipos sin partidos jugados)
+
+SELECT
+    e.nombre AS equipo,
+    COUNT(r.id_partido) AS pj,
+    COALESCE(SUM(r.gf > r.gc), 0) AS pg,
+    COALESCE(SUM(r.gf = r.gc), 0) AS pe,
+    COALESCE(SUM(r.gf < r.gc), 0) AS pp,
+    COALESCE(SUM(r.gf), 0) AS gf,
+    COALESCE(SUM(r.gc), 0) AS gc,
+    COALESCE(SUM(r.gf - r.gc), 0) AS dg,
+    COALESCE(SUM(CASE
+        WHEN r.gf > r.gc THEN 3
+        WHEN r.gf = r.gc THEN 1
+        ELSE 0
+    END), 0) AS puntos
+FROM equipo e
+LEFT JOIN (
+    SELECT id_partido, id_torneo, id_equipo_local AS id_equipo,
+           goles_local AS gf, goles_visitante AS gc
+    FROM resultado_partido
+    UNION ALL
+    SELECT id_partido, id_torneo, id_equipo_visitante,
+           goles_visitante, goles_local
+    FROM resultado_partido
+) r ON r.id_torneo = e.id_torneo AND r.id_equipo = e.id_equipo
+WHERE e.id_torneo = 1
+GROUP BY e.id_equipo, e.nombre
+ORDER BY puntos DESC, dg DESC, gf DESC;
+
+
+-- 14. Promedio de goles por fecha y promedio total
+
+SELECT numero_fecha,
+       ROUND(AVG(goles_local + goles_visitante), 2) AS promedio_goles
+FROM resultado_partido
+WHERE id_torneo = 1
+GROUP BY numero_fecha WITH ROLLUP;
+
+
+-- 15. Porcentaje de partidos jugados, postergados y cancelados
+
+SELECT
+    COALESCE(ROUND(100 * SUM(estado = 'jugado') / NULLIF(COUNT(*), 0), 1), 0) AS pct_jugados,
+    COALESCE(ROUND(100 * SUM(estado IN ('postergado','cancelado')) / NULLIF(COUNT(*), 0), 1), 0)
+        AS pct_postergados_cancelados
+FROM partido
+WHERE id_torneo = 1;
+
+
+-- 16. Jugadores a una tarjeta amarilla de la suspension por acumulacion
+
+SELECT t.ci_jugador, j.nombre, j.apellido,
+       COUNT(*) AS amarillas, MAX(p.numero_fecha) AS ultima_fecha
+FROM tarjeta t
+JOIN partido p ON p.id_partido = t.id_partido
+JOIN jugador j ON j.ci = t.ci_jugador
+WHERE p.id_torneo = 1 AND t.color = 'amarilla'
+GROUP BY t.ci_jugador, j.nombre, j.apellido
+HAVING COUNT(*) = 2
+ORDER BY amarillas DESC;
+
+
+-- 17. Goles recibidos por equipo
+
+SELECT equipo, SUM(goles_recibidos) AS goles_en_contra
+FROM (
+    SELECT e.nombre AS equipo, r.goles_visitante AS goles_recibidos
+    FROM resultado_partido r
+    JOIN equipo e ON e.id_equipo = r.id_equipo_local
+    WHERE r.id_torneo = 1
+    UNION ALL
+    SELECT e.nombre AS equipo, r.goles_local AS goles_recibidos
+    FROM resultado_partido r
+    JOIN equipo e ON e.id_equipo = r.id_equipo_visitante
+    WHERE r.id_torneo = 1
+) sub
+GROUP BY equipo
+ORDER BY goles_en_contra, equipo;
+
+
+-- 18. Partidos pendientes por equipo
+
+SELECT equipo, COUNT(*) AS partidos_pendientes
+FROM (
+    SELECT e.nombre AS equipo, p.id_partido
+    FROM partido p
+    JOIN equipo e ON e.id_equipo = p.id_equipo_local
+    WHERE p.id_torneo = 1 AND p.estado IN ('programado', 'postergado')
+    UNION ALL
+    SELECT e.nombre AS equipo, p.id_partido
+    FROM partido p
+    JOIN equipo e ON e.id_equipo = p.id_equipo_visitante
+    WHERE p.id_torneo = 1 AND p.estado IN ('programado', 'postergado')
+) pendientes
+GROUP BY equipo
+ORDER BY partidos_pendientes DESC, equipo;

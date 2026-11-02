@@ -16,6 +16,12 @@ CONSULTAS = [
     "jugadores_con_mas_tarjetas",
     "partidos_disputados_por_fecha",
     "jugadores_por_equipo",
+    "tabla_posiciones",
+    "promedio_goles_por_fecha",
+    "porcentaje_partidos_jugados",
+    "jugadores_en_riesgo_de_suspension",
+    "valla_menos_vencida",
+    "partidos_pendientes_por_equipo",
 ]
 
 
@@ -51,11 +57,29 @@ def test_tabla_goleadores_envia_el_limite(monkeypatch):
     assert llamada["params"] == (2, 5)
 
 
-def test_todas_las_consultas_devuelve_los_12_reportes(monkeypatch):
+def test_todas_las_consultas_devuelve_los_18_reportes(monkeypatch):
     monkeypatch.setattr(consultas, "fetch_all", lambda sql, params: [])
 
     resultado = consultas.todas_las_consultas(1)
 
-    assert len(resultado) == 12
+    assert len(resultado) == 18
     assert "tabla_goleadores" in resultado
     assert "jugadores_por_equipo" in resultado
+
+
+def test_tabla_posiciones_parte_de_equipo_para_incluir_los_sin_partidos(monkeypatch):
+    llamada = {}
+
+    def fake_fetch_all(sql, params):
+        llamada["sql"] = sql
+        llamada["params"] = params
+        return [{"equipo": f"Equipo {numero}"} for numero in range(1, 7)]
+
+    monkeypatch.setattr(consultas, "fetch_all", fake_fetch_all)
+
+    resultado = consultas.tabla_posiciones(torneo_id=3)
+
+    assert len(resultado) == 6
+    assert "FROM equipo e" in llamada["sql"]
+    assert "LEFT JOIN (" in llamada["sql"]
+    assert llamada["params"] == (3,)
