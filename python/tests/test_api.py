@@ -45,10 +45,30 @@ def test_planillero_no_puede_crear_jugadores(client):
     assert respuesta.status_code == 403
 
 
+def test_sesion_devuelve_el_rol_autenticado(client):
+    autenticar_como("planillero")
+
+    respuesta = client.get("/sesion")
+
+    assert respuesta.status_code == 200
+    assert respuesta.json() == {"rol": "planillero"}
+
+
 def test_payload_de_complejo_invalido_devuelve_422(client):
     autenticar_como("administrador")
 
     respuesta = client.post("/complejos", json={"nombre": "Complejo"})
+
+    assert respuesta.status_code == 422
+
+
+def test_api_rechaza_cadenas_vacias_o_solo_espacios(client):
+    autenticar_como("administrador")
+
+    respuesta = client.post(
+        "/complejos",
+        json={"nombre": "   ", "direccion": "Calle 1", "departamento": "Montevideo"},
+    )
 
     assert respuesta.status_code == 422
 
@@ -61,6 +81,8 @@ def test_partido_rechaza_cancha_ocupada(client, monkeypatch):
             return {"n": 2}
         if "SELECT COUNT(*) AS n FROM equipo_jugador_torneo" in sql:
             return {"n": 5}
+        if "JOIN jugador j ON j.ci=e.ci_capitan" in sql:
+            return {"n": 1}
         if "AND dia=%s AND id_turno=%s" in sql:
             return {"ok": 1}
         return None
@@ -84,6 +106,39 @@ def test_partido_rechaza_cancha_ocupada(client, monkeypatch):
 
     assert respuesta.status_code == 400
     assert "ocupada" in respuesta.json()["detail"]
+
+
+def test_partido_rechaza_equipo_sin_capitan_valido(client, monkeypatch):
+    autenticar_como("administrador")
+
+    def fake_fetch_one(sql, params=(), rol="administrador"):
+        if "SELECT COUNT(*) AS n FROM equipo WHERE" in sql:
+            return {"n": 2}
+        if "SELECT COUNT(*) AS n FROM equipo_jugador_torneo" in sql:
+            return {"n": 5}
+        if "JOIN jugador j ON j.ci=e.ci_capitan" in sql:
+            return {"n": 0}
+        pytest.fail(f"Consulta inesperada: {sql}")
+
+    monkeypatch.setattr(api, "fetch_one", fake_fetch_one)
+    monkeypatch.setattr(api, "execute", lambda *args, **kwargs: pytest.fail("No debe guardar el partido"))
+
+    respuesta = client.post(
+        "/partidos",
+        json={
+            "id_torneo": 1,
+            "numero_fecha": 1,
+            "id_equipo_local": 1,
+            "id_equipo_visitante": 2,
+            "dia": "2026-03-01",
+            "id_turno": 1,
+            "nombre_cancha": "Cancha A",
+            "id_complejo": 1,
+        },
+    )
+
+    assert respuesta.status_code == 400
+    assert "capitan" in respuesta.json()["detail"]
 
 
 def test_no_se_agrega_jugador_de_otra_facultad(client, monkeypatch):
@@ -343,6 +398,43 @@ def test_crear_torneo_valida_rango_de_fechas(client):
     )
 
     assert respuesta.status_code == 422
+
+
+def test_torneo_nuevo_debe_comenzar_en_inscripcion(client):
+    autenticar_como("administrador")
+
+    respuesta = client.post(
+        "/torneos",
+        json={
+            "nombre": "Torneo de prueba",
+            "anio": 2027,
+            "semestre": 1,
+            "fecha_inicio": "2027-01-01",
+            "fecha_fin": "2027-06-30",
+            "estado": "en curso",
+        },
+    )
+
+    assert respuesta.status_code == 422
+
+
+def test_torneo_no_avanza_con_equipo_incompleto(client, monkeypatch):
+    autenticar_como("administrador")
+
+    def fake_fetch_one(sql, params=(), rol="administrador"):
+        if "SELECT estado FROM torneo WHERE id_torneo=%s" in sql:
+            return {"estado": "inscripcion"}
+        if "HAVING COUNT(ejt.ci_jugador) NOT BETWEEN 5 AND 10" in sql:
+            return {"id_equipo": 1}
+        pytest.fail(f"Consulta inesperada: {sql}")
+
+    monkeypatch.setattr(api, "fetch_one", fake_fetch_one)
+    monkeypatch.setattr(api, "execute", lambda *args, **kwargs: pytest.fail("No debe avanzar el torneo"))
+
+    respuesta = client.put("/torneos/1/estado", json={"estado": "en curso"})
+
+    assert respuesta.status_code == 400
+    assert "Cada equipo necesita" in respuesta.json()["detail"]
 
 
 def test_no_se_permite_actualizar_partido_jugado_fuera_de_48_horas(client, monkeypatch):

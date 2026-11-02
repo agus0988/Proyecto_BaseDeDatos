@@ -5,12 +5,15 @@ USE torneo_futbol5;
 CREATE TABLE login (
     correo VARCHAR(100) PRIMARY KEY,
     contrasena VARCHAR(255) NOT NULL,
-    rol ENUM('administrador','planillero') NOT NULL
+    rol ENUM('administrador','planillero') NOT NULL,
+    CHECK (correo LIKE '%_@_%._%'),
+    CHECK (CHAR_LENGTH(TRIM(contrasena)) > 0)
 );
 
 CREATE TABLE facultad (
     id_facultad INT AUTO_INCREMENT PRIMARY KEY,
-    nombre VARCHAR(100) NOT NULL UNIQUE
+    nombre VARCHAR(100) NOT NULL UNIQUE,
+    CHECK (CHAR_LENGTH(TRIM(nombre)) > 0)
 );
 
 CREATE TABLE jugador (
@@ -23,6 +26,8 @@ CREATE TABLE jugador (
     tipo ENUM('grado','posgrado','docente','funcionario') NOT NULL,
     CHECK (ci REGEXP '^[0-9]{6,8}$'),
     CHECK (email LIKE '%_@_%._%'),
+    CHECK (CHAR_LENGTH(TRIM(nombre)) > 0),
+    CHECK (CHAR_LENGTH(TRIM(apellido)) > 0),
     FOREIGN KEY (id_facultad) REFERENCES facultad(id_facultad)
 );
 
@@ -36,6 +41,7 @@ CREATE TABLE torneo (
     estado ENUM('inscripcion','en curso','finalizado') NOT NULL DEFAULT 'inscripcion',
     UNIQUE (anio, semestre),
     CHECK (semestre IN (1, 2)),
+    CHECK (CHAR_LENGTH(TRIM(nombre)) > 0),
     CHECK (fecha_fin >= fecha_inicio)
 );
 
@@ -49,7 +55,8 @@ CREATE TABLE equipo (
     UNIQUE (id_torneo, nombre),
     FOREIGN KEY (id_torneo) REFERENCES torneo(id_torneo),
     FOREIGN KEY (id_facultad) REFERENCES facultad(id_facultad),
-    FOREIGN KEY (ci_capitan) REFERENCES jugador(ci)
+    FOREIGN KEY (ci_capitan) REFERENCES jugador(ci),
+    CHECK (CHAR_LENGTH(TRIM(nombre)) > 0)
 );
 
 CREATE TABLE equipo_jugador_torneo (
@@ -70,7 +77,10 @@ CREATE TABLE complejo (
     id_complejo INT AUTO_INCREMENT PRIMARY KEY,
     nombre VARCHAR(100) NOT NULL,
     direccion VARCHAR(150) NOT NULL,
-    departamento VARCHAR(50) NOT NULL
+    departamento VARCHAR(50) NOT NULL,
+    CHECK (CHAR_LENGTH(TRIM(nombre)) > 0),
+    CHECK (CHAR_LENGTH(TRIM(direccion)) > 0),
+    CHECK (CHAR_LENGTH(TRIM(departamento)) > 0)
 );
 
 CREATE TABLE cancha (
@@ -79,14 +89,18 @@ CREATE TABLE cancha (
     superficie ENUM('sintetico','parquet') NOT NULL,
     techada BOOLEAN NOT NULL DEFAULT FALSE,
     PRIMARY KEY (nombre_cancha, id_complejo),
-    FOREIGN KEY (id_complejo) REFERENCES complejo(id_complejo)
+    FOREIGN KEY (id_complejo) REFERENCES complejo(id_complejo),
+    CHECK (CHAR_LENGTH(TRIM(nombre_cancha)) > 0),
+    CHECK (techada IN (0, 1))
 );
 
 CREATE TABLE turno (
     id_turno INT AUTO_INCREMENT PRIMARY KEY,
     hora_inicio TIME NOT NULL UNIQUE,
     hora_fin TIME NOT NULL,
-    CHECK (hora_fin > hora_inicio)
+    CHECK (hora_fin > hora_inicio),
+    CHECK (hora_inicio >= '18:00:00' AND hora_inicio < '23:00:00'),
+    CHECK (TIMESTAMPDIFF(MINUTE, hora_inicio, hora_fin) = 60)
 );
 
 CREATE TABLE partido (
@@ -105,6 +119,7 @@ CREATE TABLE partido (
     ) STORED,
     UNIQUE (dia, id_turno, nombre_cancha, id_complejo, slot_activo),
     CHECK (numero_fecha > 0),
+    CHECK (CHAR_LENGTH(TRIM(nombre_cancha)) > 0),
     FOREIGN KEY (id_equipo_local, id_torneo) REFERENCES equipo(id_equipo, id_torneo),
     FOREIGN KEY (id_equipo_visitante, id_torneo) REFERENCES equipo(id_equipo, id_torneo),
     FOREIGN KEY (id_turno) REFERENCES turno(id_turno),

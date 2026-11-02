@@ -53,6 +53,14 @@ programación de partidos, sus planillas y eventos, las sanciones y los reportes
   valla menos vencida y jugadores con más tarjetas.
 - Los modelos Pydantic validan las entradas de la API, incluidos complejos y
   canchas.
+- MySQL protege las reglas expresables en el esquema mediante restricciones
+  declarativas (`CHECK`, claves foráneas y `UNIQUE`). Las reglas que dependen
+  de varias tablas —como facultad, composición del plantel, capitán,
+  elegibilidad, suspensiones y transiciones del torneo— se validan en la API.
+  No se usan triggers, procedimientos almacenados ni ORM.
+- El menú de terminal valida formatos y rangos sencillos antes de enviar los
+  datos. La autenticación consulta el rol real al servidor, y la API y MySQL
+  vuelven a verificar permisos e integridad.
 
 ## Bitácora de trabajo
 
@@ -62,8 +70,11 @@ programación de partidos, sus planillas y eventos, las sanciones y los reportes
 4. Se implementó el backend Python, la API y su imagen Docker con validaciones de entrada,
    autenticación y reglas de negocio.
 5. Se añadieron tests para el backend, los reportes y los flujos principales de
-   la API.
-6. Se documentaron la ejecución con Docker Compose, el puerto publicado y la
+   la API y el cliente de terminal. También se agregaron pruebas de integración
+   opcionales para las restricciones nativas de MySQL.
+6. Se implementó el menú de terminal para consultar y gestionar las operaciones
+   del torneo según el rol autenticado.
+7. Se documentaron la ejecución con Docker Compose, el puerto publicado y la
    ejecución de tests.
 
 ## Bibliografía y documentación técnica

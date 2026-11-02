@@ -9,7 +9,7 @@ import mysql.connector
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from backend import execute, fetch_all, fetch_one
 import consultas
@@ -44,7 +44,11 @@ def solo_admin(rol: str = Depends(usuario_actual)):
     return rol
 
 
-class JugadorIn(BaseModel):
+class EntradaAPI(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+
+class JugadorIn(EntradaAPI):
     ci: str = Field(pattern=r"^\d{6,8}$")
     nombre: str = Field(min_length=1, max_length=50)
     apellido: str = Field(min_length=1, max_length=50)
@@ -54,19 +58,19 @@ class JugadorIn(BaseModel):
     tipo: Literal["grado", "posgrado", "docente", "funcionario"]
 
 
-class EquipoIn(BaseModel):
+class EquipoIn(EntradaAPI):
     nombre: str = Field(min_length=1, max_length=100)
     id_torneo: int = Field(gt=0)
     id_facultad: int = Field(gt=0)
     ci_capitan: Optional[str] = Field(default=None, pattern=r"^\d{6,8}$")
 
 
-class PlantelIn(BaseModel):
+class PlantelIn(EntradaAPI):
     ci_jugador: str = Field(pattern=r"^\d{6,8}$")
     numero_camiseta: int = Field(ge=1, le=99)
 
 
-class PartidoIn(BaseModel):
+class PartidoIn(EntradaAPI):
     id_torneo: int = Field(gt=0)
     numero_fecha: int = Field(gt=0)
     id_equipo_local: int = Field(gt=0)
@@ -78,24 +82,24 @@ class PartidoIn(BaseModel):
     estado: Literal["programado", "jugado", "postergado", "cancelado"] = "programado"
 
 
-class PlanillaIn(BaseModel):
+class PlanillaIn(EntradaAPI):
     ci_jugador: str = Field(pattern=r"^\d{6,8}$")
     id_equipo: int = Field(gt=0)
 
 
-class GolIn(BaseModel):
+class GolIn(EntradaAPI):
     ci_jugador: str = Field(pattern=r"^\d{6,8}$")
     minuto: int = Field(ge=0, le=120)
     autogol: bool = False
 
 
-class TarjetaIn(BaseModel):
+class TarjetaIn(EntradaAPI):
     ci_jugador: str = Field(pattern=r"^\d{6,8}$")
     minuto: int = Field(ge=0, le=120)
     color: Literal["amarilla", "roja"]
 
 
-class SancionIn(BaseModel):
+class SancionIn(EntradaAPI):
     ci_jugador: str = Field(pattern=r"^\d{6,8}$")
     id_torneo: int = Field(gt=0)
     motivo: Literal["roja", "acumulacion de amarillas", "disciplinaria"]
@@ -103,38 +107,38 @@ class SancionIn(BaseModel):
     cantidad_fechas: int = Field(ge=1)
 
 
-class ComplejoIn(BaseModel):
+class ComplejoIn(EntradaAPI):
     nombre: str = Field(min_length=1, max_length=100)
     direccion: str = Field(min_length=1, max_length=150)
     departamento: str = Field(min_length=1, max_length=50)
 
 
-class CanchaIn(BaseModel):
+class CanchaIn(EntradaAPI):
     nombre_cancha: str = Field(min_length=1, max_length=50)
     superficie: Literal["sintetico", "parquet"]
     techada: bool = False
 
 
-class CanchaUpdate(BaseModel):
+class CanchaUpdate(EntradaAPI):
     superficie: Literal["sintetico", "parquet"]
     techada: bool = False
 
 
-class CapitanIn(BaseModel):
+class CapitanIn(EntradaAPI):
     ci_jugador: str = Field(pattern=r"^\d{6,8}$")
 
 
-class EstadoTorneoIn(BaseModel):
+class EstadoTorneoIn(EntradaAPI):
     estado: Literal["inscripcion", "en curso", "finalizado"]
 
 
-class TorneoIn(BaseModel):
+class TorneoIn(EntradaAPI):
     nombre: str = Field(min_length=1, max_length=100)
     anio: int = Field(ge=1900, le=32767)
     semestre: Literal[1, 2]
     fecha_inicio: date
     fecha_fin: date
-    estado: Literal["inscripcion", "en curso", "finalizado"] = "inscripcion"
+    estado: Literal["inscripcion"] = "inscripcion"
 
     @model_validator(mode="after")
     def validar_fechas(self):
@@ -185,12 +189,15 @@ def validar_baja_plantel(id_equipo: int, ci: str):
 
 def validar_capitan(id_equipo: int, ci: str, id_facultad: Optional[int] = None):
     equipo = fetch_one(
-        "SELECT id_facultad FROM equipo WHERE id_equipo=%s",
+        "SELECT e.id_facultad, t.estado FROM equipo e "
+        "JOIN torneo t ON t.id_torneo=e.id_torneo WHERE e.id_equipo=%s",
         (id_equipo,),
         rol="administrador",
     )
     if not equipo:
         error("Equipo inexistente")
+    if equipo["estado"] != "inscripcion":
+        error("El capitan solo se puede asignar o cambiar durante la inscripcion")
     jugador = fetch_one(
         "SELECT id_facultad FROM jugador WHERE ci=%s",
         (ci,),
@@ -248,6 +255,17 @@ def validar_partido(p: PartidoIn, id_partido: int = 0):
                 rol="administrador",
             )["n"] < 5:
                 error("Cada equipo necesita al menos 5 jugadores")
+            capitan = fetch_one(
+                "SELECT COUNT(*) AS n FROM equipo e "
+                "JOIN jugador j ON j.ci=e.ci_capitan AND j.id_facultad=e.id_facultad "
+                "JOIN equipo_jugador_torneo ejt "
+                "ON ejt.id_equipo=e.id_equipo AND ejt.ci_jugador=e.ci_capitan "
+                "WHERE e.id_equipo=%s AND e.id_torneo=%s",
+                (eq, p.id_torneo),
+                rol="administrador",
+            )
+            if capitan["n"] != 1:
+                error("Cada equipo debe tener un capitan de su plantel y facultad")
         if fetch_one(
             "SELECT 1 AS ok FROM partido WHERE id_partido<>%s AND id_torneo=%s AND estado<>'cancelado' "
             "AND ((id_equipo_local=%s AND id_equipo_visitante=%s) OR (id_equipo_local=%s AND id_equipo_visitante=%s))",
@@ -363,6 +381,11 @@ def raiz():
     return {"mensaje": "API del torneo activa"}
 
 
+@app.get("/sesion")
+def obtener_sesion(rol: str = Depends(usuario_actual)):
+    return {"rol": rol}
+
+
 @app.get("/jugadores")
 def listar_jugadores(_rol: str = Depends(solo_admin)):
     return fetch_all("SELECT * FROM jugador ORDER BY ci")
@@ -426,6 +449,15 @@ def listar_jugadores_del_equipo(id_equipo: int, _rol: str = Depends(usuario_actu
 def crear_equipo(e: EquipoIn):
     if e.ci_capitan:
         error("Cree el equipo sin capitan; agregue al jugador al plantel y luego asignelo")
+    torneo = fetch_one(
+        "SELECT estado FROM torneo WHERE id_torneo=%s",
+        (e.id_torneo,),
+        rol="administrador",
+    )
+    if not torneo:
+        error("Torneo inexistente")
+    if torneo["estado"] != "inscripcion":
+        error("Solo se pueden agregar equipos durante la inscripcion")
     execute(
         "INSERT INTO equipo (nombre, id_torneo, id_facultad, ci_capitan) VALUES (%s,%s,%s,%s)",
         (e.nombre, e.id_torneo, e.id_facultad, None),
@@ -437,12 +469,15 @@ def crear_equipo(e: EquipoIn):
 @app.put("/equipos/{id_equipo}", dependencies=[Depends(solo_admin)])
 def actualizar_equipo(id_equipo: int, e: EquipoIn):
     actual = fetch_one(
-        "SELECT id_facultad FROM equipo WHERE id_equipo=%s",
+        "SELECT e.id_facultad, e.ci_capitan, t.estado FROM equipo e "
+        "JOIN torneo t ON t.id_torneo=e.id_torneo WHERE e.id_equipo=%s",
         (id_equipo,),
         rol="administrador",
     )
     if not actual:
         error("Equipo inexistente")
+    if actual["estado"] == "finalizado":
+        error("No se pueden modificar equipos de un torneo finalizado")
     if e.id_facultad != actual["id_facultad"]:
         integrantes = fetch_one(
             "SELECT COUNT(*) AS total FROM equipo_jugador_torneo WHERE id_equipo=%s",
@@ -451,7 +486,7 @@ def actualizar_equipo(id_equipo: int, e: EquipoIn):
         )
         if integrantes["total"]:
             error("No se puede cambiar la facultad de un equipo con jugadores en el plantel")
-    if e.ci_capitan:
+    if e.ci_capitan and e.ci_capitan != actual["ci_capitan"]:
         validar_capitan(id_equipo, e.ci_capitan, e.id_facultad)
     execute(
         "UPDATE equipo SET nombre=%s, id_torneo=%s, id_facultad=%s, ci_capitan=%s WHERE id_equipo=%s",
@@ -745,6 +780,22 @@ def actualizar_estado_torneo(id_torneo: int, datos: EstadoTorneoIn):
     transiciones = {"inscripcion": "en curso", "en curso": "finalizado"}
     if datos.estado != torneo["estado"] and transiciones.get(torneo["estado"]) != datos.estado:
         error("El estado del torneo solo puede avanzar de inscripcion a en curso y luego a finalizado")
+    if datos.estado == "en curso":
+        equipos_invalidos = fetch_one(
+            "SELECT e.id_equipo FROM equipo e "
+            "LEFT JOIN equipo_jugador_torneo ejt ON ejt.id_equipo=e.id_equipo "
+            "LEFT JOIN jugador j ON j.ci=ejt.ci_jugador "
+            "WHERE e.id_torneo=%s "
+            "GROUP BY e.id_equipo, e.ci_capitan, e.id_facultad "
+            "HAVING COUNT(ejt.ci_jugador) NOT BETWEEN 5 AND 10 "
+            "OR COALESCE(SUM(j.tipo IN ('docente','funcionario')),0)>2 "
+            "OR COALESCE(SUM(ejt.ci_jugador=e.ci_capitan AND j.id_facultad=e.id_facultad),0)=0 "
+            "LIMIT 1",
+            (id_torneo,),
+            rol="administrador",
+        )
+        if equipos_invalidos:
+            error("Cada equipo necesita de 5 a 10 jugadores, maximo dos docentes/funcionarios y un capitan del plantel")
     execute("UPDATE torneo SET estado=%s WHERE id_torneo=%s", (datos.estado, id_torneo), rol="administrador")
     return {"mensaje": "Estado del torneo actualizado"}
 
