@@ -8,4 +8,26 @@ services:
       - "3307:3306"
     volumes:
       - ./db:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot1234"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  consultas:
+    image: python:3.12-slim
+    container_name: consultas_torneo
+    working_dir: /app
+    volumes:
+      - .:/app
+    environment:
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_NAME: torneo_futbol5
+      DB_USER: admin_torneo
+      DB_PASSWORD: admin1234
+    command: sh -c "pip install -q -r requirements.txt && python python/menu.py"
+    depends_on:
+      db:
+        condition: service_healthy
       
