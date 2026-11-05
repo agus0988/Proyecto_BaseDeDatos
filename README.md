@@ -61,8 +61,8 @@ y MySQL no vuelve a ejecutar los scripts.
    Si ya estás en la carpeta `python`, ejecutá solo `python menu.py`; no
    vuelvas a hacer `cd python`.
 
-3. Dejar la URL predeterminada (`http://localhost:8000`) y escribir el correo y
-   la contraseña de prueba cuando los solicite:
+3. Escribir el correo y la contraseña de prueba cuando el menú los solicite.
+   El menú se conecta automáticamente a `http://localhost:8000`:
 
    - Administrador: `admin@ucu.edu.uy` / `admin123`
    - Planillero: `planillero@ucu.edu.uy` / `planillero123`

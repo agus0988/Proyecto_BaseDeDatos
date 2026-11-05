@@ -584,13 +584,9 @@ def ejecutar_menu(cliente, rol, entrada=input, salida=print):
 
 
 def main(entrada=input, salida=print, pedir_contrasena=getpass.getpass):
-    salida("=== Acceso a la API del torneo ===")
-    base_url = entrada("URL de la API [http://localhost:8000]: ").strip()
-    if not base_url:
-        base_url = "http://localhost:8000"
     username = entrada("Correo: ").strip()
     password = pedir_contrasena("Contraseña: ")
-    cliente = APIClient(base_url, username, password)
+    cliente = APIClient("http://localhost:8000", username, password)
 
     try:
         sesion = cliente.get("/sesion")
