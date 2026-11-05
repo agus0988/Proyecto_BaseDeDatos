@@ -19,7 +19,6 @@ services:
   api:
     build: .
     container_name: api_torneo
-    working_dir: /app/python
     ports:
       - "8000:8000"
     environment:

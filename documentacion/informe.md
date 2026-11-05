@@ -33,17 +33,14 @@ programación de partidos, sus planillas y eventos, las sanciones y los reportes
 
 - Restricciones de integridad para fechas, camisetas, goles, tarjetas y
   pertenencia a torneo/equipo.
-- La base impide camisetas repetidas por equipo, fechas de partido y sanción no
-  positivas, y la reserva duplicada de una cancha en el mismo día y turno. Un
-  índice único condicional permite reutilizar el turno de un partido cancelado.
-- La API valida los mismos conflictos de agenda excluyendo partidos cancelados,
-  controla planteles, capitanes, sanciones, estados y la ventana de corrección.
-- Validaciones de negocio para evitar planteles con más de diez integrantes,
-  superar el límite de docentes/funcionarios, mezclar facultades y programar un
-  equipo en dos partidos de la misma fecha.
-- Control de ocupación de cancha por fecha y turno, y protección de la
-  corrección de partidos jugados después de 48 horas.
-- Validación de suspensión antes de agregar un jugador a la planilla.
+- MySQL impide camisetas repetidas por equipo, fechas de partido y sanción no
+  positivas, y reservas duplicadas de cancha para el mismo día y turno; un
+  índice único condicional permite reutilizar el turno de partidos cancelados.
+  La API aplica las reglas de negocio entre tablas: valida la ocupación de
+  canchas excluyendo partidos cancelados, limita y verifica la composición de
+  planteles (incluidos facultad y tipos de jugador), valida capitanes,
+  sanciones, estados y suspensiones, evita que un equipo juegue dos partidos en
+  una fecha y protege la corrección de partidos jugados después de 48 horas.
 - Registro de sanción posterior a una tarjeta roja o a la acumulación de tres
   amarillas.
 - Reporte de fair play con un punto por amarilla y tres por roja, incluyendo
@@ -53,11 +50,7 @@ programación de partidos, sus planillas y eventos, las sanciones y los reportes
   valla menos vencida y jugadores con más tarjetas.
 - Los modelos Pydantic validan las entradas de la API, incluidos complejos y
   canchas.
-- MySQL protege las reglas expresables en el esquema mediante restricciones
-  declarativas (`CHECK`, claves foráneas y `UNIQUE`). Las reglas que dependen
-  de varias tablas —como facultad, composición del plantel, capitán,
-  elegibilidad, suspensiones y transiciones del torneo— se validan en la API.
-  No se usan triggers, procedimientos almacenados ni ORM.
+- No se usan triggers, procedimientos almacenados ni ORM.
 - El menú de terminal valida formatos y rangos sencillos antes de enviar los
   datos. La autenticación consulta el rol real al servidor, y la API y MySQL
   vuelven a verificar permisos e integridad.
@@ -69,13 +62,9 @@ programación de partidos, sus planillas y eventos, las sanciones y los reportes
 3. Se creó la vista de resultados y se añadieron consultas para los reportes.
 4. Se implementó el backend Python, la API y su imagen Docker con validaciones de entrada,
    autenticación y reglas de negocio.
-5. Se añadieron tests para el backend, los reportes y los flujos principales de
-   la API y el cliente de terminal. También se agregaron pruebas de integración
-   opcionales para las restricciones nativas de MySQL.
-6. Se implementó el menú de terminal para consultar y gestionar las operaciones
+5. Se implementó el menú de terminal para consultar y gestionar las operaciones
    del torneo según el rol autenticado.
-7. Se documentaron la ejecución con Docker Compose, el puerto publicado y la
-   ejecución de tests.
+6. Se documentaron la ejecución con Docker Compose y el puerto publicado.
 
 ## Bibliografía y documentación técnica
 
