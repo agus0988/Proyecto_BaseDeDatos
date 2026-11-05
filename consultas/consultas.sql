@@ -4,9 +4,9 @@ USE torneo_futbol5;
 SELECT
     e.nombre AS equipo,
     COUNT(r.id_partido) AS pj,
-    COALESCE(SUM(r.gf > r.gc), 0) AS pg,
-    COALESCE(SUM(r.gf = r.gc), 0) AS pe,
-    COALESCE(SUM(r.gf < r.gc), 0) AS pp,
+    COALESCE(SUM(CASE WHEN r.gf > r.gc THEN 1 ELSE 0 END), 0) AS pg,
+    COALESCE(SUM(CASE WHEN r.gf = r.gc THEN 1 ELSE 0 END), 0) AS pe,
+    COALESCE(SUM(CASE WHEN r.gf < r.gc THEN 1 ELSE 0 END), 0) AS pp,
     COALESCE(SUM(r.gf), 0) AS gf,
     COALESCE(SUM(r.gc), 0) AS gc,
     COALESCE(SUM(r.gf - r.gc), 0) AS dg,
@@ -42,8 +42,8 @@ LIMIT 10;
 -- 3. Fair play por equipo (amarilla = 1 punto, roja = 3 puntos)
 SELECT
     e.nombre AS equipo,
-    COALESCE(SUM(t.color = 'amarilla'), 0) AS tarjetas_amarillas,
-    COALESCE(SUM(t.color = 'roja'), 0) AS tarjetas_rojas,
+    COALESCE(SUM(CASE WHEN t.color = 'amarilla' THEN 1 ELSE 0 END), 0) AS tarjetas_amarillas,
+    COALESCE(SUM(CASE WHEN t.color = 'roja' THEN 1 ELSE 0 END), 0) AS tarjetas_rojas,
     COALESCE(SUM(CASE t.color
         WHEN 'amarilla' THEN 1
         WHEN 'roja' THEN 3
@@ -62,11 +62,19 @@ GROUP BY e.id_equipo, e.nombre
 ORDER BY puntos_fair_play, e.nombre;
 
 -- 4. Promedio de goles por fecha y promedio total
-SELECT numero_fecha,
-       ROUND(AVG(goles_local + goles_visitante), 2) AS promedio_goles
-FROM resultado_partido
-WHERE id_torneo = 1
-GROUP BY numero_fecha WITH ROLLUP;
+SELECT numero_fecha, promedio_goles
+FROM (
+    SELECT numero_fecha,
+           ROUND(AVG(goles_local + goles_visitante), 2) AS promedio_goles
+    FROM resultado_partido
+    WHERE id_torneo = 1
+    GROUP BY numero_fecha
+    UNION ALL
+    SELECT NULL, ROUND(AVG(goles_local + goles_visitante), 2)
+    FROM resultado_partido
+    WHERE id_torneo = 1
+) AS promedios
+ORDER BY numero_fecha IS NULL, numero_fecha;
 
 -- 5. Rankings independientes de canchas y turnos más utilizados
 SELECT c.nombre_cancha, co.nombre AS complejo,
@@ -118,9 +126,9 @@ ORDER BY e.nombre, sj.motivo;
 
 -- 9. Porcentaje de partidos jugados, postergados y cancelados
 SELECT
-    COALESCE(ROUND(100 * SUM(estado = 'jugado') / NULLIF(COUNT(*), 0), 1), 0)
+    COALESCE(ROUND(100 * SUM(CASE WHEN estado = 'jugado' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 1), 0)
         AS pct_jugados,
-    COALESCE(ROUND(100 * SUM(estado IN ('postergado','cancelado')) /
+    COALESCE(ROUND(100 * SUM(CASE WHEN estado IN ('postergado','cancelado') THEN 1 ELSE 0 END) /
         NULLIF(COUNT(*), 0), 1), 0) AS pct_postergados_cancelados
 FROM partido
 WHERE id_torneo = 1;

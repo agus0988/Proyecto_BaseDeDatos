@@ -163,7 +163,7 @@ def validar_alta_plantel(id_equipo: int, ci: str):
     if jugador["id_facultad"] != equipo["id_facultad"]:
         error("El jugador es de otra facultad")
     plantel = fetch_one(
-        "SELECT COUNT(*) AS total, COALESCE(SUM(j.tipo IN ('docente','funcionario')), 0) AS staff FROM equipo_jugador_torneo e JOIN jugador j ON j.ci = e.ci_jugador WHERE e.id_equipo=%s",
+        "SELECT COUNT(*) AS total, COALESCE(SUM(CASE WHEN j.tipo IN ('docente','funcionario') THEN 1 ELSE 0 END), 0) AS staff FROM equipo_jugador_torneo e JOIN jugador j ON j.ci = e.ci_jugador WHERE e.id_equipo=%s",
         (id_equipo,),
         rol="administrador",
     )
@@ -288,7 +288,7 @@ def validar_partido(p: PartidoIn, id_partido: int = 0):
             error("La cancha ya esta ocupada en ese turno")
     if p.estado == "jugado":
         fila = fetch_one(
-            "SELECT TIMESTAMP(%s, hora_fin) > NOW() AS futuro FROM turno WHERE id_turno=%s",
+            "SELECT CASE WHEN TIMESTAMP(%s, hora_fin) > NOW() THEN 1 ELSE 0 END AS futuro FROM turno WHERE id_turno=%s",
             (p.dia, p.id_turno),
             rol="administrador",
         )
@@ -304,7 +304,7 @@ def validar_baja_partido(id_partido: int):
 
 def validar_correccion(id_partido: int):
     fila = fetch_one(
-        "SELECT p.estado, TIMESTAMP(p.dia, t.hora_fin) + INTERVAL 48 HOUR < NOW() AS vencido "
+        "SELECT p.estado, CASE WHEN TIMESTAMP(p.dia, t.hora_fin) + INTERVAL 48 HOUR < NOW() THEN 1 ELSE 0 END AS vencido "
         "FROM partido p JOIN turno t ON t.id_turno = p.id_turno WHERE p.id_partido=%s",
         (id_partido,),
         rol="administrador",
@@ -320,7 +320,7 @@ def validar_correccion(id_partido: int):
 def validar_planilla(id_partido: int, ci: str, id_equipo: int) -> bool:
     partido = fetch_one(
         "SELECT p.id_torneo, p.numero_fecha, p.estado, p.id_equipo_local, "
-        "p.id_equipo_visitante, TIMESTAMP(p.dia, t.hora_fin) <= NOW() AS turno_finalizado "
+        "p.id_equipo_visitante, CASE WHEN TIMESTAMP(p.dia, t.hora_fin) <= NOW() THEN 1 ELSE 0 END AS turno_finalizado "
         "FROM partido p JOIN turno t ON t.id_turno=p.id_turno WHERE p.id_partido=%s",
         (id_partido,),
         rol="administrador",
@@ -505,10 +505,15 @@ def eliminar_equipo(id_equipo: int):
 @app.post("/equipos/{id_equipo}/jugadores", dependencies=[Depends(solo_admin)])
 def agregar_al_plantel(id_equipo: int, j: PlantelIn):
     validar_alta_plantel(id_equipo, j.ci_jugador)
+    equipo = fetch_one(
+        "SELECT id_torneo FROM equipo WHERE id_equipo=%s",
+        (id_equipo,),
+        rol="administrador",
+    )
     execute(
         "INSERT INTO equipo_jugador_torneo (id_equipo, ci_jugador, id_torneo, numero_camiseta) "
-        "SELECT id_equipo, %s, id_torneo, %s FROM equipo WHERE id_equipo=%s",
-        (j.ci_jugador, j.numero_camiseta, id_equipo),
+        "VALUES (%s,%s,%s,%s)",
+        (id_equipo, j.ci_jugador, equipo["id_torneo"], j.numero_camiseta),
         rol="administrador",
     )
     return {"mensaje": "Jugador agregado al plantel"}
@@ -788,8 +793,9 @@ def actualizar_estado_torneo(id_torneo: int, datos: EstadoTorneoIn):
             "WHERE e.id_torneo=%s "
             "GROUP BY e.id_equipo, e.ci_capitan, e.id_facultad "
             "HAVING COUNT(ejt.ci_jugador) NOT BETWEEN 5 AND 10 "
-            "OR COALESCE(SUM(j.tipo IN ('docente','funcionario')),0)>2 "
-            "OR COALESCE(SUM(ejt.ci_jugador=e.ci_capitan AND j.id_facultad=e.id_facultad),0)=0 "
+            "OR COALESCE(SUM(CASE WHEN j.tipo IN ('docente','funcionario') THEN 1 ELSE 0 END),0)>2 "
+            "OR COALESCE(SUM(CASE WHEN ejt.ci_jugador=e.ci_capitan AND j.id_facultad=e.id_facultad "
+            "THEN 1 ELSE 0 END),0)=0 "
             "LIMIT 1",
             (id_torneo,),
             rol="administrador",

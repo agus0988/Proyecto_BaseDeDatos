@@ -23,8 +23,8 @@ def fair_play_por_equipo(torneo_id=1):
     return fetch_all(
         """
         SELECT e.nombre AS equipo,
-               COALESCE(SUM(t.color = 'amarilla'), 0) AS tarjetas_amarillas,
-               COALESCE(SUM(t.color = 'roja'), 0) AS tarjetas_rojas,
+               COALESCE(SUM(CASE WHEN t.color = 'amarilla' THEN 1 ELSE 0 END), 0) AS tarjetas_amarillas,
+               COALESCE(SUM(CASE WHEN t.color = 'roja' THEN 1 ELSE 0 END), 0) AS tarjetas_rojas,
                COALESCE(SUM(CASE t.color
                    WHEN 'amarilla' THEN 1
                    WHEN 'roja' THEN 3
@@ -145,9 +145,9 @@ def tabla_posiciones(torneo_id=1):
         """
         SELECT e.nombre AS equipo,
                COUNT(r.id_partido) AS pj,
-               COALESCE(SUM(r.gf > r.gc), 0) AS pg,
-               COALESCE(SUM(r.gf = r.gc), 0) AS pe,
-               COALESCE(SUM(r.gf < r.gc), 0) AS pp,
+               COALESCE(SUM(CASE WHEN r.gf > r.gc THEN 1 ELSE 0 END), 0) AS pg,
+               COALESCE(SUM(CASE WHEN r.gf = r.gc THEN 1 ELSE 0 END), 0) AS pe,
+               COALESCE(SUM(CASE WHEN r.gf < r.gc THEN 1 ELSE 0 END), 0) AS pp,
                COALESCE(SUM(r.gf), 0) AS gf,
                COALESCE(SUM(r.gc), 0) AS gc,
                COALESCE(SUM(r.gf - r.gc), 0) AS dg,
@@ -177,19 +177,29 @@ def tabla_posiciones(torneo_id=1):
 def promedio_goles_por_fecha(torneo_id=1):
     return fetch_all(
         """
-        SELECT numero_fecha, ROUND(AVG(goles_local + goles_visitante), 2) AS promedio_goles
-        FROM resultado_partido WHERE id_torneo = %s
-        GROUP BY numero_fecha WITH ROLLUP
+        SELECT numero_fecha, promedio_goles
+        FROM (
+            SELECT numero_fecha,
+                   ROUND(AVG(goles_local + goles_visitante), 2) AS promedio_goles
+            FROM resultado_partido
+            WHERE id_torneo = %s
+            GROUP BY numero_fecha
+            UNION ALL
+            SELECT NULL, ROUND(AVG(goles_local + goles_visitante), 2)
+            FROM resultado_partido
+            WHERE id_torneo = %s
+        ) AS promedios
+        ORDER BY numero_fecha IS NULL, numero_fecha
         """,
-        (torneo_id,),
+        (torneo_id, torneo_id),
     )
 
 
 def porcentaje_partidos_jugados(torneo_id=1):
     return fetch_all(
         """
-        SELECT COALESCE(ROUND(100 * SUM(estado = 'jugado') / NULLIF(COUNT(*), 0), 1), 0) AS pct_jugados,
-               COALESCE(ROUND(100 * SUM(estado IN ('postergado','cancelado')) / NULLIF(COUNT(*), 0), 1), 0) AS pct_postergados_cancelados
+        SELECT COALESCE(ROUND(100 * SUM(CASE WHEN estado = 'jugado' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 1), 0) AS pct_jugados,
+               COALESCE(ROUND(100 * SUM(CASE WHEN estado IN ('postergado','cancelado') THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 1), 0) AS pct_postergados_cancelados
         FROM partido WHERE id_torneo = %s
         """,
         (torneo_id,),
