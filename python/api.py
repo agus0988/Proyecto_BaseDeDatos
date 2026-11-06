@@ -1,5 +1,3 @@
-"""API del torneo con FastAPI. Reutiliza backend.py y consultas.py."""
-
 from __future__ import annotations
 
 from datetime import date

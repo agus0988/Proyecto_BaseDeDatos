@@ -1,4 +1,3 @@
-"""Consultas del torneo ejecutadas mediante el módulo backend."""
 
 from backend import fetch_all
 
@@ -246,7 +245,6 @@ def valla_menos_vencida(torneo_id=1):
 
 
 def todas_las_consultas(torneo_id=1):
-    """Ejecuta y devuelve todas las consultas agrupadas por nombre."""
     return {
         "tabla_goleadores": tabla_goleadores(torneo_id),
         "fair_play_por_equipo": fair_play_por_equipo(torneo_id),

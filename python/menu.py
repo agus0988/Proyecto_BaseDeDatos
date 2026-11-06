@@ -1,4 +1,3 @@
-"""Cliente interactivo de terminal para la API del torneo."""
 
 import base64
 import getpass
@@ -32,7 +31,7 @@ MOTIVOS_SANCION = ("roja", "acumulacion de amarillas", "disciplinaria")
 
 
 class APIError(Exception):
-    """Error devuelto por la API o de conexión con ella."""
+    pass
 
 
 class APIClient:

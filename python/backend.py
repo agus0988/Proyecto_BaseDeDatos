@@ -1,4 +1,3 @@
-"""Funciones simples para trabajar con la base de datos del torneo."""
 
 import os
 
@@ -24,13 +23,11 @@ DB_USERS = {
 
 
 def connect_db(rol="administrador"):
-    """Abre una conexión a MySQL para el rol indicado."""
     usuario, clave = DB_USERS[rol]
     return mysql.connector.connect(**{**DB_CONFIG, "user": usuario, "password": clave})
 
 
 def fetch_all(sql, params=(), rol="administrador"):
-    """Ejecuta un SELECT y devuelve todas sus filas como diccionarios."""
     connection = connect_db(rol)
     cursor = connection.cursor(dictionary=True)
     try:
@@ -42,7 +39,6 @@ def fetch_all(sql, params=(), rol="administrador"):
 
 
 def fetch_one(sql, params=(), rol="administrador"):
-    """Ejecuta un SELECT y devuelve una fila o None."""
     connection = connect_db(rol)
     cursor = connection.cursor(dictionary=True)
     try:
@@ -54,7 +50,6 @@ def fetch_one(sql, params=(), rol="administrador"):
 
 
 def execute(sql, params=(), rol="administrador"):
-    """Ejecuta INSERT, UPDATE o DELETE y confirma la transacción."""
     connection = connect_db(rol)
     cursor = connection.cursor()
     try:
