@@ -4,13 +4,13 @@ USE torneo_futbol5;
 SELECT
     e.nombre AS equipo,
     COUNT(r.id_partido) AS pj,
-    COALESCE(SUM(CASE WHEN r.gf > r.gc THEN 1 ELSE 0 END), 0) AS pg,
-    COALESCE(SUM(CASE WHEN r.gf = r.gc THEN 1 ELSE 0 END), 0) AS pe,
-    COALESCE(SUM(CASE WHEN r.gf < r.gc THEN 1 ELSE 0 END), 0) AS pp,
-    COALESCE(SUM(r.gf), 0) AS gf,
-    COALESCE(SUM(r.gc), 0) AS gc,
-    COALESCE(SUM(r.gf - r.gc), 0) AS dg,
-    COALESCE(SUM(CASE
+    IFNULL(SUM(CASE WHEN r.gf > r.gc THEN 1 ELSE 0 END), 0) AS pg,
+    IFNULL(SUM(CASE WHEN r.gf = r.gc THEN 1 ELSE 0 END), 0) AS pe,
+    IFNULL(SUM(CASE WHEN r.gf < r.gc THEN 1 ELSE 0 END), 0) AS pp,
+    IFNULL(SUM(r.gf), 0) AS gf,
+    IFNULL(SUM(r.gc), 0) AS gc,
+    IFNULL(SUM(r.gf - r.gc), 0) AS dg,
+    IFNULL(SUM(CASE
         WHEN r.gf > r.gc THEN 3
         WHEN r.gf = r.gc THEN 1
         ELSE 0
@@ -42,9 +42,9 @@ LIMIT 10;
 -- 3. Fair play por equipo (amarilla = 1 punto, roja = 3 puntos)
 SELECT
     e.nombre AS equipo,
-    COALESCE(SUM(CASE WHEN t.color = 'amarilla' THEN 1 ELSE 0 END), 0) AS tarjetas_amarillas,
-    COALESCE(SUM(CASE WHEN t.color = 'roja' THEN 1 ELSE 0 END), 0) AS tarjetas_rojas,
-    COALESCE(SUM(CASE t.color
+    IFNULL(SUM(CASE WHEN t.color = 'amarilla' THEN 1 ELSE 0 END), 0) AS tarjetas_amarillas,
+    IFNULL(SUM(CASE WHEN t.color = 'roja' THEN 1 ELSE 0 END), 0) AS tarjetas_rojas,
+    IFNULL(SUM(CASE t.color
         WHEN 'amarilla' THEN 1
         WHEN 'roja' THEN 3
         ELSE 0
@@ -126,9 +126,9 @@ ORDER BY e.nombre, sj.motivo;
 
 -- 9. Porcentaje de partidos jugados, postergados y cancelados
 SELECT
-    COALESCE(ROUND(100 * SUM(CASE WHEN estado = 'jugado' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 1), 0)
+    IFNULL(ROUND(100 * SUM(CASE WHEN estado = 'jugado' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 1), 0)
         AS pct_jugados,
-    COALESCE(ROUND(100 * SUM(CASE WHEN estado IN ('postergado','cancelado') THEN 1 ELSE 0 END) /
+    IFNULL(ROUND(100 * SUM(CASE WHEN estado IN ('postergado','cancelado') THEN 1 ELSE 0 END) /
         NULLIF(COUNT(*), 0), 1), 0) AS pct_postergados_cancelados
 FROM partido
 WHERE id_torneo = 1;
