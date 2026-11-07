@@ -4,17 +4,17 @@ USE torneo_futbol5;
 SELECT
     e.nombre AS equipo,
     COUNT(r.id_partido) AS pj,
-    IFNULL(SUM(CASE WHEN r.gf > r.gc THEN 1 ELSE 0 END), 0) AS pg,
-    IFNULL(SUM(CASE WHEN r.gf = r.gc THEN 1 ELSE 0 END), 0) AS pe,
-    IFNULL(SUM(CASE WHEN r.gf < r.gc THEN 1 ELSE 0 END), 0) AS pp,
+    SUM(CASE WHEN r.gf > r.gc THEN 1 ELSE 0 END) AS pg,
+    SUM(CASE WHEN r.gf = r.gc THEN 1 ELSE 0 END) AS pe,
+    SUM(CASE WHEN r.gf < r.gc THEN 1 ELSE 0 END) AS pp,
     IFNULL(SUM(r.gf), 0) AS gf,
     IFNULL(SUM(r.gc), 0) AS gc,
     IFNULL(SUM(r.gf - r.gc), 0) AS dg,
-    IFNULL(SUM(CASE
+    SUM(CASE
         WHEN r.gf > r.gc THEN 3
         WHEN r.gf = r.gc THEN 1
         ELSE 0
-    END), 0) AS puntos
+    END) AS puntos
 FROM equipo e
 LEFT JOIN (
     SELECT id_partido, id_torneo, id_equipo_local AS id_equipo,
@@ -42,13 +42,13 @@ LIMIT 10;
 -- 3. Fair play por equipo (amarilla = 1 punto, roja = 3 puntos)
 SELECT
     e.nombre AS equipo,
-    IFNULL(SUM(CASE WHEN t.color = 'amarilla' THEN 1 ELSE 0 END), 0) AS tarjetas_amarillas,
-    IFNULL(SUM(CASE WHEN t.color = 'roja' THEN 1 ELSE 0 END), 0) AS tarjetas_rojas,
-    IFNULL(SUM(CASE t.color
+    SUM(CASE WHEN t.color = 'amarilla' THEN 1 ELSE 0 END) AS tarjetas_amarillas,
+    SUM(CASE WHEN t.color = 'roja' THEN 1 ELSE 0 END) AS tarjetas_rojas,
+    SUM(CASE t.color
         WHEN 'amarilla' THEN 1
         WHEN 'roja' THEN 3
         ELSE 0
-    END), 0) AS puntos_fair_play
+    END) AS puntos_fair_play
 FROM equipo e
 LEFT JOIN partido p
     ON p.id_torneo = e.id_torneo
