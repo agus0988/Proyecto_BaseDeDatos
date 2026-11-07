@@ -132,7 +132,7 @@ class EstadoTorneoIn(EntradaAPI):
 
 class TorneoIn(EntradaAPI):
     nombre: str = Field(min_length=1, max_length=100)
-    anio: int = Field(ge=1900, le=32767)
+    anio: int = Field(ge=2000, le=2100)
     semestre: Literal[1, 2]
     fecha_inicio: date
     fecha_fin: date

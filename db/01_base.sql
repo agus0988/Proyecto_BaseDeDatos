@@ -34,8 +34,8 @@ CREATE TABLE jugador (
 CREATE TABLE torneo (
     id_torneo INT AUTO_INCREMENT PRIMARY KEY,
     nombre VARCHAR(100) NOT NULL,
-    anio SMALLINT NOT NULL,
-    semestre TINYINT NOT NULL,
+    anio INT NOT NULL,
+    semestre INT NOT NULL,
     fecha_inicio DATE NOT NULL,
     fecha_fin DATE NOT NULL,
     estado ENUM('inscripcion','en curso','finalizado') NOT NULL DEFAULT 'inscripcion',
@@ -63,7 +63,7 @@ CREATE TABLE equipo_jugador_torneo (
     id_equipo INT NOT NULL,
     ci_jugador VARCHAR(15) NOT NULL,
     id_torneo INT NOT NULL,
-    numero_camiseta TINYINT NOT NULL,
+    numero_camiseta INT NOT NULL,
     PRIMARY KEY (id_equipo, ci_jugador, id_torneo),
     UNIQUE (ci_jugador, id_torneo),
     UNIQUE (id_equipo, ci_jugador),
@@ -114,7 +114,7 @@ CREATE TABLE partido (
     nombre_cancha VARCHAR(50) NOT NULL,
     id_complejo INT NOT NULL,
     estado ENUM('programado','jugado','postergado','cancelado') NOT NULL DEFAULT 'programado',
-    slot_activo TINYINT GENERATED ALWAYS AS (
+    slot_activo INT GENERATED ALWAYS AS (
         CASE WHEN estado = 'cancelado' THEN NULL ELSE 1 END
     ) STORED,
     UNIQUE (dia, id_turno, nombre_cancha, id_complejo, slot_activo),
@@ -140,7 +140,7 @@ CREATE TABLE gol (
     id_gol INT AUTO_INCREMENT PRIMARY KEY,
     id_partido INT NOT NULL,
     ci_jugador VARCHAR(15) NOT NULL,
-    minuto TINYINT NOT NULL,
+    minuto INT NOT NULL,
     autogol BOOLEAN NOT NULL DEFAULT FALSE,
     CHECK (minuto BETWEEN 0 AND 120),
     FOREIGN KEY (id_partido, ci_jugador) REFERENCES planilla_partido(id_partido, ci_jugador)
@@ -150,7 +150,7 @@ CREATE TABLE tarjeta (
     id_tarjeta INT AUTO_INCREMENT PRIMARY KEY,
     id_partido INT NOT NULL,
     ci_jugador VARCHAR(15) NOT NULL,
-    minuto TINYINT NOT NULL,
+    minuto INT NOT NULL,
     color ENUM('amarilla','roja') NOT NULL,
     CHECK (minuto BETWEEN 0 AND 120),
     FOREIGN KEY (id_partido, ci_jugador) REFERENCES planilla_partido(id_partido, ci_jugador)

@@ -387,7 +387,7 @@ def administrar_canchas(cliente, entrada=input, salida=print):
 def administrar_torneos(cliente, entrada=input, salida=print):
     campos = (
         ("nombre", "texto", (), 1, 100, False),
-        ("anio", "numero", (), 1900, 32767, False),
+        ("anio", "numero", (), 2000, 2100, False),
         ("semestre", "numero", (), 1, 2, False),
         ("fecha_inicio", "fecha", (), 1, None, False),
         ("fecha_fin", "fecha", (), 1, None, False),
