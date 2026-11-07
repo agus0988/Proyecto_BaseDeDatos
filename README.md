@@ -3,10 +3,6 @@
 Base de datos y API para administrar un torneo de fútbol 5: equipos, planteles,
 partidos, planillas, goles, tarjetas, sanciones y reportes.
 
-## Repositorio
-
-[Ver el proyecto en GitHub](https://github.com/agus0988/Proyecto_BaseDeDatos)
-
 ## Equipo
 
 **Equipo:** CD6
